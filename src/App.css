@@ -1,38 +1,430 @@
-.App {
+/* =================== Global Colors & Fonts =================== */
+:root {
+  --primary-color: #007bff;
+  --primary-gradient: linear-gradient(135deg, #007bff, #00b4d8);
+  --secondary-color: #28a745;
+  --secondary-gradient: linear-gradient(135deg, #28a745, #56c46d);
+  --whatsapp-color: #25d366;
+  --text-color: #222;
+  --background-color: #f1f5f9;
+  --card-background: #ffffff;
+  --border-color: #e0e0e0;
+  --warning-color: #ffc107;
+  --focus-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+  --soft-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  --strong-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', 'Segoe UI', Tahoma, sans-serif;
+  background: var(--background-color);
+  color: var(--text-color);
+  transition: background 0.3s ease-in-out;
+}
+
+/* =================== Main App Container =================== */
+.app {
+  padding: 30px 20px;
+  max-width: 700px;
+  margin: 40px auto;
   text-align: center;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+/* =================== Header =================== */
+h1 {
+  color: var(--primary-color);
+  font-size: 2.8em;
+  font-weight: 800;
+  letter-spacing: 1px;
+  /* Slightly reduced letter spacing for mobile legibility */
+  text-transform: uppercase;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.subtitle {
+  font-size: 1.1em;
+  color: #666;
+  font-weight: 400;
+  margin-top: -5px;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+/* =================== Agent USSD Card =================== */
+.agent-ussd-card {
+  background: linear-gradient(135deg, #fff6e0, #ffeeba);
+  padding: 25px 30px;
+  border-radius: 14px;
+  margin-bottom: 35px;
+  box-shadow: var(--soft-shadow);
+  border-left: 6px solid #dc3545;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.agent-ussd-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--strong-shadow);
+}
+
+.agent-ussd-content {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  text-align: left;
+}
+
+.primary-code {
+  font-size: 1.8em;
+  font-weight: 900;
+  color: #111;
+  background: #fff;
+  padding: 8px 20px;
+  border-radius: 6px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.08);
+  letter-spacing: 1px;
+}
+
+/* =================== Purchase Form =================== */
+.purchase-form-container {
+  background: var(--card-background);
+  padding: 40px 30px;
+  border-radius: 14px;
+  box-shadow: var(--soft-shadow);
+  border-top: 6px solid #007bff;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.purchase-form-container:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--strong-shadow);
+}
+
+.purchase-form h2 {
+  color: var(--primary-color);
+  font-size: 1.6em;
+  margin-bottom: 25px;
+  border-bottom: 2px solid #eaeaea;
+  padding-bottom: 10px;
+  font-weight: 600;
+}
+
+.purchase-form {
   display: flex;
   flex-direction: column;
+  gap: 20px;
+  text-align: left;
+}
+
+.form-group label {
+  font-weight: 500;
+  margin-bottom: 8px;
+  display: block;
+  color: #333;
+}
+
+.form-group input,
+.form-group select {
+  padding: 12px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 15px;
+  background-color: #fafafa;
+  transition: all 0.25s ease;
+  width: 100%;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  border-color: var(--primary-color);
+  background: #fff;
+  box-shadow: var(--focus-shadow);
+}
+
+/* =================== Button Styling =================== */
+.submit-button {
+  padding: 15px;
+  background: var(--secondary-gradient);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.1em;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s, opacity 0.3s;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(40, 167, 69, 0.4);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =================== Floating WhatsApp Icon =================== */
+.whatsapp-float {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: var(--whatsapp-color);
+  color: white;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 0 20px rgba(37, 211, 102, 0.6);
+  z-index: 999;
+  animation: pulse 2.5s infinite;
+  transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.whatsapp-float:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 25px rgba(37, 211, 102, 0.8);
+}
+
+.contact-support {
+  text-align: center;
+  margin: 2rem 0;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.contact-support h3 {
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.contact-support p {
+  color: #555;
+  font-size: 1rem;
+}
+
+.contact-number {
+  color: #008000;
+  font-weight: 600;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.contact-number:hover {
+  color: #006400;
+  text-decoration: underline;
+}
+
+/* ---------- Header Title & Icon ---------- */
+.title-with-icon {
+  display: flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  gap: 10px;
 }
 
-.App-link {
-  color: #61dafb;
+.title-with-icon h1 {
+  font-size: 2.8em;
+  color: #2c3e50;
+  margin: 0;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
+.wifi-icon {
+  font-size: 1.8em;
+  color: #4caf50;
+  /* Green accent to match your theme */
+  animation: pulse 2s infinite ease-in-out;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
   }
-  to {
-    transform: rotate(360deg);
+
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 10px rgba(37, 211, 102, 0.4);
+  }
+
+  50% {
+    box-shadow: 0 0 25px rgba(37, 211, 102, 0.8);
+  }
+
+  100% {
+    box-shadow: 0 0 10px rgba(37, 211, 102, 0.4);
+  }
+}
+
+/* =================== Modal (Glassmorphism Style) =================== */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  padding: 40px;
+  max-width: 420px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
+  text-align: center;
+}
+
+.modal h2 {
+  color: #28a745;
+  font-weight: 700;
+}
+
+.close-modal-button {
+  padding: 12px 24px;
+  background: var(--primary-gradient);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1em;
+  margin-top: 20px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.close-modal-button:hover {
+  transform: scale(1.05);
+}
+
+/* =================== Responsive =================== */
+@media (max-width: 768px) {
+  .app {
+    padding: 15px;
+    margin: 20px auto;
+  }
+
+  h1 {
+    font-size: 2.2em;
+  }
+
+  .subtitle {
+    font-size: 1em;
+  }
+
+  .agent-ussd-card,
+  .purchase-form-container {
+    padding: 25px 20px;
+  }
+
+  .agent-ussd-content {
+    flex-direction: column;
+    text-align: center;
+    gap: 12px;
+  }
+
+  .primary-code {
+    font-size: 1.5em;
+    padding: 6px 16px;
+  }
+
+  .purchase-form h2 {
+    font-size: 1.3em;
+    text-align: center;
+  }
+
+  .form-group label {
+    font-size: 0.9em;
+  }
+
+  .form-group input,
+  .form-group select {
+    font-size: 0.9em;
+    padding: 10px 12px;
+  }
+
+  .submit-button {
+    font-size: 1em;
+    padding: 12px;
+    width: 100%;
+  }
+
+  .contact-support {
+    margin: 1.5rem 0;
+    padding: 0.8rem;
+  }
+
+  .contact-support p {
+    font-size: 0.95rem;
+  }
+
+  .whatsapp-float {
+    width: 55px;
+    height: 55px;
+    bottom: 15px;
+    right: 15px;
+  }
+
+  .modal {
+    padding: 25px;
+    max-width: 90%;
+  }
+
+  .modal h2 {
+    font-size: 1.2em;
+  }
+
+  .close-modal-button {
+    padding: 10px 18px;
+    font-size: 0.9em;
+  }
+}
+
+@media (max-width: 400px) {
+  h1 {
+    font-size: 1.8em;
+  }
+
+  .subtitle {
+    font-size: 0.9em;
+  }
+
+  .primary-code {
+    font-size: 1.3em;
+  }
+
+  .purchase-form h2 {
+    font-size: 1.2em;
+  }
+
+  .form-group label {
+    font-size: 0.85em;
+  }
+
+  .form-group input,
+  .form-group select {
+    font-size: 0.85em;
+    padding: 9px 10px;
+  }
+
+  .submit-button {
+    font-size: 0.95em;
+    padding: 10px;
+  }
+
+  .contact-support p {
+    font-size: 0.9rem;
   }
 }
