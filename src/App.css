@@ -5,11 +5,15 @@
   --secondary-color: #28a745;
   --secondary-gradient: linear-gradient(135deg, #28a745, #56c46d);
   --whatsapp-color: #25d366;
+  --warning-color: #ffc107;
+  --info-color: #17a2b8;
+  --info-gradient: linear-gradient(135deg, #17a2b8, #20c997);
+  --agent-color: #6f42c1;
+  --agent-gradient: linear-gradient(135deg, #6f42c1, #9f7aea);
   --text-color: #222;
   --background-color: #f1f5f9;
   --card-background: #ffffff;
   --border-color: #e0e0e0;
-  --warning-color: #ffc107;
   --focus-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
   --soft-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
   --strong-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
@@ -46,6 +50,69 @@ h1 {
   color: #666;
   font-weight: 400;
   margin-top: -5px;
+}
+
+/* =================== New Action Buttons Section =================== */
+.action-buttons-section {
+  background: var(--card-background);
+  padding: 25px 30px;
+  border-radius: 14px;
+  margin-bottom: 35px;
+  box-shadow: var(--soft-shadow);
+  border-top: 6px solid var(--info-color);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.action-buttons-section:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--strong-shadow);
+}
+
+.action-buttons-container {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.action-button {
+  padding: 15px 20px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1.1em;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.3s ease;
+  box-shadow: var(--soft-shadow);
+}
+
+.check-data-btn {
+  background: var(--info-gradient);
+  color: white;
+}
+
+.check-data-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(23, 162, 184, 0.4);
+}
+
+.agent-portal-btn {
+  background: var(--agent-gradient);
+  color: white;
+}
+
+.agent-portal-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(111, 66, 193, 0.4);
+}
+
+.action-icon {
+  font-size: 1.2em;
 }
 
 /* =================== Agent USSD Card =================== */
@@ -136,6 +203,44 @@ h1 {
   border-color: var(--primary-color);
   background: #fff;
   box-shadow: var(--focus-shadow);
+}
+
+/* =================== Simple Form for Modals =================== */
+.simple-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  text-align: left;
+  margin: 20px 0;
+}
+
+/* =================== Toggle Buttons for Agent Modal =================== */
+.toggle-buttons {
+  display: flex;
+  margin-bottom: 20px;
+  gap: 10px;
+  justify-content: center;
+}
+
+.toggle-btn {
+  padding: 10px 20px;
+  border: 2px solid var(--agent-color);
+  background: transparent;
+  color: var(--agent-color);
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.toggle-btn.active {
+  background: var(--agent-gradient);
+  color: white;
+}
+
+.toggle-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(111, 66, 193, 0.3);
 }
 
 /* =================== Button Styling =================== */
@@ -291,6 +396,17 @@ h1 {
 .modal h2 {
   color: #28a745;
   font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.modal-content h2 {
+  color: var(--primary-color);
+}
+
+.success-message p {
+  font-size: 1.1em;
+  margin: 15px 0;
+  line-height: 1.5;
 }
 
 .close-modal-button {
@@ -309,6 +425,14 @@ h1 {
   transform: scale(1.05);
 }
 
+.close-modal-button.secondary {
+  background: #6c757d;
+}
+
+.close-modal-button.secondary:hover {
+  background: #5a6268;
+}
+
 /* =================== Responsive =================== */
 @media (max-width: 768px) {
   .app {
@@ -324,9 +448,19 @@ h1 {
     font-size: 1em;
   }
 
+  .action-buttons-section,
   .agent-ussd-card,
   .purchase-form-container {
     padding: 25px 20px;
+  }
+
+  .action-buttons-container {
+    gap: 12px;
+  }
+
+  .action-button {
+    font-size: 1em;
+    padding: 12px 16px;
   }
 
   .agent-ussd-content {
@@ -359,6 +493,15 @@ h1 {
     font-size: 1em;
     padding: 12px;
     width: 100%;
+  }
+
+  .toggle-buttons {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .toggle-btn {
+    padding: 12px;
   }
 
   .contact-support {
@@ -426,5 +569,14 @@ h1 {
 
   .contact-support p {
     font-size: 0.9rem;
+  }
+
+  .action-button {
+    font-size: 0.95em;
+    padding: 10px 14px;
+  }
+
+  .toggle-btn {
+    font-size: 0.95em;
   }
 }
