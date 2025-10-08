@@ -25,7 +25,8 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { db, auth } from "./Firebase";
+import { db, auth, functions } from "./Firebase";
+import { httpsCallable } from "firebase/functions";
 import "./App.css";
 
 Modal.setAppElement("#root");
@@ -33,13 +34,10 @@ Modal.setAppElement("#root");
 const AGENT_USSD_CODE = "*920*177#";
 
 const THETELLER_CONFIG = {
-  apiKey:
-    process.env.REACT_APP_THETELLER_API_KEY ||
-    "NmY4NGNkNzFhMDk5ZWI3MmNiNmFlYWIzMzYxMTlhOTY=", // Use environment variable
-  env: process.env.NODE_ENV === "production" ? "live" : "test",
+  merchantId: "TTM-00009769", // Replace with your Theteller merchant ID
   currency: "GHS",
   paymentMethod: "both",
-  redirectUrl: `${window.location.origin}/payment-callback`,
+  redirectUrl: window.location.href,
   payButtonText: "Pay Securely with TheTeller",
   customDescription: "Payment for Data Bundle via Lord's Data",
 };
@@ -109,8 +107,11 @@ function App() {
   const [selectedBundleSize, setSelectedBundleSize] = useState("1");
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
   const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [purchaseDetails, setPurchaseDetails] = useState(null);
-  const [paymentTrigger, setPaymentTrigger] = useState(null);
+  const [purchaseDetails, setPurchaseDetails] = useState(() => {
+    // Load from localStorage on mount
+    const saved = localStorage.getItem("purchaseDetails");
+    return saved ? JSON.parse(saved) : null;
+  });
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [checkDataModalOpen, setCheckDataModalOpen] = useState(false);
   const [agentPortalModalOpen, setAgentPortalModalOpen] = useState(false);
@@ -123,30 +124,12 @@ function App() {
   const [agentSignUpEmail, setAgentSignUpEmail] = useState("");
   const [signUpUsername, setSignUpUsername] = useState("");
   const [signUpPassword, setSignUpPassword] = useState("");
-  const [agentSignUpDetails, setAgentSignUpDetails] = useState(null);
-  const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false); // Ensure state is defined
-  const [agentPaymentTrigger, setAgentPaymentTrigger] = useState(null);
+  const [agentSignUpDetails, setAgentSignUpDetails] = useState(() => {
+    const saved = localStorage.getItem("agentSignUpDetails");
+    return saved ? JSON.parse(saved) : null;
+  });
+  const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-
-  // Load Theteller script dynamically
-  useEffect(() => {
-    const script = document.createElement("script");
-    const scriptUrl =
-      THETELLER_CONFIG.env === "test"
-        ? "https://checkout-test.theteller.net/resource/api/inline/theteller_inline.js"
-        : "https://checkout.theteller.net/resource/api/inline/theteller_inline.js"; // Replace with actual production URL
-    script.src = scriptUrl;
-    script.async = true;
-    script.onload = () => console.log("Theteller script loaded successfully");
-    script.onerror = () => console.error("Failed to load Theteller script");
-    document.body.appendChild(script);
-
-    return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
-    };
-  }, []);
 
   // Generate unique transaction ID
   const generateTransactionId = () => {
@@ -194,11 +177,28 @@ function App() {
     );
   }, [selectedProvider]);
 
+  // Persist purchaseDetails and agentSignUpDetails to localStorage
+  useEffect(() => {
+    if (purchaseDetails) {
+      localStorage.setItem("purchaseDetails", JSON.stringify(purchaseDetails));
+    } else {
+      localStorage.removeItem("purchaseDetails");
+    }
+    if (agentSignUpDetails) {
+      localStorage.setItem(
+        "agentSignUpDetails",
+        JSON.stringify(agentSignUpDetails)
+      );
+    } else {
+      localStorage.removeItem("agentSignUpDetails");
+    }
+  }, [purchaseDetails, agentSignUpDetails]);
+
   const closeModal = () => {
     setModalIsOpen(false);
-    setPaymentTrigger(null);
     setRecipientPhoneNumber("");
     setSelectedProvider("airtel");
+    setPurchaseDetails(null); // Clear purchaseDetails
   };
 
   const closeCheckDataModal = () => {
@@ -209,7 +209,6 @@ function App() {
   const closeAgentSignUpModal = () => {
     setAgentSignUpModalOpen(false);
     setAgentSignUpDetails(null);
-    setAgentPaymentTrigger(null);
   };
 
   const closeAgentPortalModal = () => {
@@ -298,7 +297,7 @@ function App() {
     }
   };
 
-  const handleAgentSignUpPayment = (e) => {
+  const handleAgentSignUpPayment = async (e) => {
     e.preventDefault();
 
     if (
@@ -332,16 +331,34 @@ function App() {
       password: signUpPassword,
       transid: transactionId,
     });
-    setAgentPaymentTrigger(transactionId);
 
-    setTimeout(() => {
+    try {
+      const initiateThetellerPayment = httpsCallable(
+        functions,
+        "initiateThetellerPayment"
+      );
+      const amountInPesewas = (50.0 * 100).toFixed(0); // Convert 50.00 GHS to 5000 pesewas
+      const result = await initiateThetellerPayment({
+        merchant_id: THETELLER_CONFIG.merchantId,
+        transaction_id: transactionId,
+        desc: "Agent Registration Fee - Lord's Data Portal",
+        amount: amountInPesewas,
+        redirect_url: THETELLER_CONFIG.redirectUrl,
+        email: STATIC_CUSTOMER_EMAIL,
+      });
+      const { checkout_url } = result.data;
+      window.location.href = checkout_url; // Redirect to Theteller checkout
+    } catch (error) {
+      console.error("Error initiating agent signup payment:", error);
+      alert(`Payment initiation failed: ${error.message}`);
+    } finally {
       setIsPaymentLoading(false);
       setAgentFullName("");
       setAgentPhone("");
       setAgentSignUpEmail("");
       setSignUpUsername("");
       setSignUpPassword("");
-    }, 2000);
+    }
   };
 
   // Handle agent signup redirect and registration
@@ -365,7 +382,7 @@ function App() {
     const transid = urlParams.get("transaction_id");
 
     if (
-      status === "successful" &&
+      status === "approved" &&
       code === "000" &&
       transid &&
       agentSignUpDetails?.transid === transid
@@ -389,7 +406,7 @@ function App() {
           });
 
           console.log("Agent registered successfully:", user.uid);
-          setAgentSignUpModalOpen(true); // Open agent signup confirmation modal
+          setAgentSignUpModalOpen(true);
         } catch (error) {
           console.error("Signup Error:", error);
           if (error.code === "auth/no-auth-event") {
@@ -411,9 +428,12 @@ function App() {
     const status = urlParams.get("status");
     const code = urlParams.get("code");
     const transid = urlParams.get("transaction_id");
+    const r_switch = urlParams.get("r_switch");
+    const amount = urlParams.get("amount");
+    const subscriber_number = urlParams.get("subscriber_number");
 
     if (
-      status === "successful" &&
+      status === "approved" &&
       code === "000" &&
       transid &&
       purchaseDetails?.transid === transid
@@ -426,20 +446,35 @@ function App() {
             purchasedAt: new Date(),
             userId: currentUser ? currentUser.uid : null,
             exported: false,
+            subscriber_number: purchaseDetails.number.startsWith("0")
+              ? `233${purchaseDetails.number.slice(1)}`
+              : `233${purchaseDetails.number}`,
+            r_switch: r_switch || "N/A", // Store provider from Theteller
+            amount: parseFloat(amount).toFixed(2), // Store amount in GHS
           });
-          console.log("Purchase stored in Firestore");
+          console.log(
+            "Purchase stored in Firestore with transaction ID:",
+            transid
+          );
         } catch (error) {
           console.error("Error storing purchase:", error);
+          alert("Failed to store purchase. Please contact support.");
         }
       };
 
       storePurchase();
       setModalIsOpen(true);
       window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (status && transid && purchaseDetails?.transid !== transid) {
+      console.warn("Transaction ID mismatch:", {
+        urlTransId: transid,
+        purchaseDetails,
+      });
+      alert("Transaction ID mismatch. Please try the purchase again.");
     }
   }, [purchaseDetails, currentUser]);
 
-  const handlePurchase = (e) => {
+  const handlePurchase = async (e) => {
     e.preventDefault();
 
     const finalBundle = getSelectedBundle;
@@ -458,18 +493,39 @@ function App() {
 
     setIsPaymentLoading(true);
     const transactionId = generateTransactionId();
-    setPurchaseDetails({
+    const newPurchaseDetails = {
       provider: selectedProvider.toUpperCase(),
       gb: finalBundle.gb,
-      price: finalBundle.price,
+      price: finalBundle.price, // Store in GHS for display
       number: recipientPhoneNumber,
       transid: transactionId,
-    });
-    setPaymentTrigger(transactionId);
+    };
+    setPurchaseDetails(newPurchaseDetails);
 
-    setTimeout(() => {
+    try {
+      const initiateThetellerPayment = httpsCallable(
+        functions,
+        "initiateThetellerPayment"
+      );
+      const amountInPesewas = (finalBundle.price * 100).toFixed(0); // Convert GHS to pesewas
+      const result = await initiateThetellerPayment({
+        merchant_id: THETELLER_CONFIG.merchantId,
+        transaction_id: transactionId,
+        desc: `${THETELLER_CONFIG.customDescription} - ${
+          finalBundle.gb
+        }GB ${selectedProvider.toUpperCase()}`,
+        amount: amountInPesewas,
+        redirect_url: THETELLER_CONFIG.redirectUrl,
+        email: STATIC_CUSTOMER_EMAIL,
+      });
+      const { checkout_url } = result.data;
+      window.location.href = checkout_url; // Redirect to Theteller checkout
+    } catch (error) {
+      console.error("Error initiating purchase payment:", error);
+      alert(`Payment initiation failed: ${error.message}`);
+    } finally {
       setIsPaymentLoading(false);
-    }, 2000);
+    }
   };
 
   return (
@@ -605,24 +661,6 @@ function App() {
               placeholder="Enter 10-digit number"
             />
           </motion.div>
-          {paymentTrigger && purchaseDetails && (
-            <motion.a
-              className="ttlr_inline"
-              data-apikey={THETELLER_CONFIG.apiKey}
-              data-transid={purchaseDetails.transid}
-              data-amount={purchaseDetails.price.toFixed(2)}
-              data-customer_email={STATIC_CUSTOMER_EMAIL}
-              data-currency={THETELLER_CONFIG.currency}
-              data-redirect_url={THETELLER_CONFIG.redirectUrl}
-              data-pay_button_text={THETELLER_CONFIG.payButtonText}
-              data-custom_description={`${THETELLER_CONFIG.customDescription} - ${purchaseDetails.gb}GB ${purchaseDetails.provider}`}
-              data-payment_method={THETELLER_CONFIG.paymentMethod}
-            >
-              {isPaymentLoading
-                ? "Processing..."
-                : `Pay GHS ${purchaseDetails.price.toFixed(2)}`}
-            </motion.a>
-          )}
           <motion.button
             type="submit"
             className="submit-button"
@@ -637,7 +675,7 @@ function App() {
             animate={{ opacity: 1 }}
             transition={{ delay: 1.0 }}
           >
-            Proceed to Payment
+            {isPaymentLoading ? "Processing..." : "Proceed to Payment"}
           </motion.button>
         </form>
       </motion.section>
@@ -836,27 +874,6 @@ function App() {
                     placeholder="Enter your password"
                   />
                 </div>
-                {agentPaymentTrigger && agentSignUpDetails && (
-                  <motion.a
-                    className="ttlr_inline"
-                    href="#"
-                    role="button"
-                    data-apikey={THETELLER_CONFIG.apiKey}
-                    data-transid={agentSignUpDetails.transid}
-                    data-amount="50.00"
-                    data-customer_email={STATIC_CUSTOMER_EMAIL}
-                    data-currency={THETELLER_CONFIG.currency}
-                    data-redirect_url={THETELLER_CONFIG.redirectUrl}
-                    data-pay_button_text={THETELLER_CONFIG.payButtonText}
-                    data-custom_description="Agent Registration Fee - Lord's Data Portal"
-                    data-payment_method={THETELLER_CONFIG.paymentMethod}
-                    aria-label="Initiate agent registration payment with Theteller"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    {isPaymentLoading ? "Processing..." : "Pay GHS 50"}
-                  </motion.a>
-                )}
                 <motion.button
                   type="submit"
                   className="submit-button"
@@ -871,7 +888,7 @@ function App() {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Proceed to Payment
+                  {isPaymentLoading ? "Processing..." : "Proceed to Payment"}
                 </motion.button>
               </form>
             </>
