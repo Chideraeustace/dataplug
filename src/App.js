@@ -1,6 +1,3 @@
-// First, install necessary dependencies:
-// npm install framer-motion react-modal react-icons firebase
-
 import React, { useState, useMemo, useEffect } from "react";
 import { motion } from "framer-motion";
 import Modal from "react-modal";
@@ -14,32 +11,41 @@ import {
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithRedirect,
+  getRedirectResult,
   onAuthStateChanged,
+  GoogleAuthProvider,
 } from "firebase/auth";
-import { collection, addDoc, doc, setDoc } from "firebase/firestore";
-import { db, auth } from "./Firebase"; // Import from firebase.js
+import {
+  collection,
+  addDoc,
+  doc,
+  setDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+import { db, auth } from "./Firebase";
 import "./App.css";
 
 Modal.setAppElement("#root");
 
-// Agent's Specific USSD Code for purchase through Lord's Data (the code you provided)
 const AGENT_USSD_CODE = "*920*177#";
 
-// TheTeller Configuration - Replace with your actual API credentials
 const THETELLER_CONFIG = {
-  apiKey: "PK_TEST_1234567890abcdef", // Replace with your Test API Key from https://theteller.net/
-  env: "test", // Change to "prod" for production
+  apiKey:
+    process.env.REACT_APP_THETELLER_API_KEY ||
+    "NmY4NGNkNzFhMDk5ZWI3MmNiNmFlYWIzMzYxMTlhOTY=", // Use environment variable
+  env: process.env.NODE_ENV === "production" ? "live" : "test",
   currency: "GHS",
   paymentMethod: "both",
-  redirectUrl: window.location.origin + "/payment-success", // Or your success page
+  redirectUrl: `${window.location.origin}/payment-callback`,
   payButtonText: "Pay Securely with TheTeller",
   customDescription: "Payment for Data Bundle via Lord's Data",
 };
 
-// Static email for all customers
 const STATIC_CUSTOMER_EMAIL = "customeremail@gmail.com";
 
-// Data structure remains the same
 const providersData = {
   airtel: [
     { gb: 1, price: 5.0 },
@@ -104,58 +110,35 @@ function App() {
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [purchaseDetails, setPurchaseDetails] = useState(null);
-
-  // New states for modals
+  const [paymentTrigger, setPaymentTrigger] = useState(null);
+  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [checkDataModalOpen, setCheckDataModalOpen] = useState(false);
   const [agentPortalModalOpen, setAgentPortalModalOpen] = useState(false);
   const [dataPhoneNumber, setDataPhoneNumber] = useState("");
-
-  // Agent Login states
-  const [agentEmail, setAgentEmail] = useState(""); // Changed from username to email for Firebase Auth
+  const [agentEmail, setAgentEmail] = useState("");
   const [agentPassword, setAgentPassword] = useState("");
-
-  // Agent Sign Up states
   const [isSignUp, setIsSignUp] = useState(false);
   const [agentFullName, setAgentFullName] = useState("");
   const [agentPhone, setAgentPhone] = useState("");
-  const [agentSignUpEmail, setAgentSignUpEmail] = useState(""); // New: Email for sign-up
+  const [agentSignUpEmail, setAgentSignUpEmail] = useState("");
   const [signUpUsername, setSignUpUsername] = useState("");
   const [signUpPassword, setSignUpPassword] = useState("");
   const [agentSignUpDetails, setAgentSignUpDetails] = useState(null);
-  const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false);
-
-  // Auth state
+  const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false); // Ensure state is defined
+  const [agentPaymentTrigger, setAgentPaymentTrigger] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
 
-  const getSelectedBundle = useMemo(() => {
-    const providerBundles = providersData[selectedProvider];
-    return providerBundles.find(
-      (bundle) => bundle.gb === Number(selectedBundleSize)
-    );
-  }, [selectedProvider, selectedBundleSize]);
-
-  // Firebase Auth State Listener
+  // Load Theteller script dynamically
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  React.useEffect(() => {
-    setSelectedBundleSize(
-      providersData[selectedProvider][0]?.gb.toString() || ""
-    );
-  }, [selectedProvider]);
-
-  // Load TheTeller script dynamically
-  React.useEffect(() => {
     const script = document.createElement("script");
-    script.src =
-      THETELLER_CONFIG.env === "prod"
-        ? "https://checkout-old.theteller.net/resource/api/inline/theteller_inline.js"
-        : "https://checkout-test.theteller.net/resource/api/inline/theteller_inline.js";
+    const scriptUrl =
+      THETELLER_CONFIG.env === "test"
+        ? "https://checkout-test.theteller.net/resource/api/inline/theteller_inline.js"
+        : "https://checkout.theteller.net/resource/api/inline/theteller_inline.js"; // Replace with actual production URL
+    script.src = scriptUrl;
     script.async = true;
+    script.onload = () => console.log("Theteller script loaded successfully");
+    script.onerror = () => console.error("Failed to load Theteller script");
     document.body.appendChild(script);
 
     return () => {
@@ -165,27 +148,68 @@ function App() {
     };
   }, []);
 
-  const closeModal = () => {
-    setModalIsOpen(false);
+  // Generate unique transaction ID
+  const generateTransactionId = () => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    return array[0].toString().padStart(12, "0").slice(0, 12);
   };
 
-  // New handlers
+  const getSelectedBundle = useMemo(() => {
+    const providerBundles = providersData[selectedProvider];
+    return providerBundles.find(
+      (bundle) => bundle.gb === Number(selectedBundleSize)
+    );
+  }, [selectedProvider, selectedBundleSize]);
+
+  useEffect(() => {
+    const handleAuthError = (error) => {
+      if (error.code === "auth/no-auth-event") {
+        console.warn(
+          "Firebase Auth Event Error: Likely popup/redirect blocked. Try incognito or whitelist domains."
+        );
+        alert(
+          "Auth flow interrupted (e.g., popup blocked). Please retry in an incognito window or check console."
+        );
+      }
+    };
+
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      (user) => {
+        setCurrentUser(user);
+        if (user) {
+          console.log("Auth state changed: User logged in", user.uid);
+        }
+      },
+      handleAuthError
+    );
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    setSelectedBundleSize(
+      providersData[selectedProvider][0]?.gb.toString() || ""
+    );
+  }, [selectedProvider]);
+
+  const closeModal = () => {
+    setModalIsOpen(false);
+    setPaymentTrigger(null);
+    setRecipientPhoneNumber("");
+    setSelectedProvider("airtel");
+  };
+
   const closeCheckDataModal = () => {
     setCheckDataModalOpen(false);
     setDataPhoneNumber("");
   };
 
-  const handleCheckData = (e) => {
-    e.preventDefault();
-    if (dataPhoneNumber.length !== 10) {
-      alert("Please enter a valid 10-digit phone number.");
-      return;
-    }
-    // Placeholder: In a real app, this would API call to check data balance
-    alert(
-      `Checking data status for ${dataPhoneNumber}... (Placeholder response: 5GB remaining)`
-    );
-    closeCheckDataModal();
+  const closeAgentSignUpModal = () => {
+    setAgentSignUpModalOpen(false);
+    setAgentSignUpDetails(null);
+    setAgentPaymentTrigger(null);
   };
 
   const closeAgentPortalModal = () => {
@@ -195,7 +219,61 @@ function App() {
     setIsSignUp(false);
   };
 
-  // Firebase Agent Login
+  const handleCheckData = async (e) => {
+    e.preventDefault();
+    if (dataPhoneNumber.length !== 10 || !/^\d{10}$/.test(dataPhoneNumber)) {
+      alert("Please enter a valid 10-digit phone number (e.g., 0549856098).");
+      return;
+    }
+
+    let formattedPhoneNumber;
+    if (dataPhoneNumber.startsWith("0")) {
+      formattedPhoneNumber = `233${dataPhoneNumber.slice(1)}`;
+    } else {
+      formattedPhoneNumber = `233${dataPhoneNumber}`;
+    }
+
+    try {
+      const q = query(
+        collection(db, "teller_response"),
+        where("subscriber_number", "==", formattedPhoneNumber)
+      );
+
+      const querySnapshot = await getDocs(q);
+      if (querySnapshot.empty) {
+        alert(`No data bundle found for ${dataPhoneNumber}.`);
+        closeCheckDataModal();
+        return;
+      }
+
+      const doc = querySnapshot.docs[0];
+      const data = doc.data();
+
+      if (data.exported === true) {
+        alert(
+          `Data bundle for ${dataPhoneNumber} has been processed!\nDescription: ${
+            data.desc || "N/A"
+          }\nProvider: ${data.r_switch || "N/A"}\nGB: ${
+            data.desc?.match(/(\d+)GB/)?.[1] || "N/A"
+          }`
+        );
+      } else {
+        alert(
+          `Data bundle for ${dataPhoneNumber} is pending processing.\nTransaction ID: ${
+            data.transaction_id || "N/A"
+          }\nStatus: ${data.status || "Pending"}\nCreated: ${
+            data.createdAt?.toDate?.()?.toLocaleString() || "N/A"
+          }`
+        );
+      }
+    } catch (error) {
+      console.error("Error checking data status:", error);
+      alert("Error checking data status. Please try again.");
+    }
+
+    closeCheckDataModal();
+  };
+
   const handleAgentLogin = async (e) => {
     e.preventDefault();
     if (!agentEmail || !agentPassword) {
@@ -205,17 +283,21 @@ function App() {
 
     try {
       await signInWithEmailAndPassword(auth, agentEmail, agentPassword);
-      // If successful, auth state updates automatically
       alert(
         `Logged in as agent with email ${agentEmail}! (Placeholder: Welcome to Agent Dashboard)`
       );
       closeAgentPortalModal();
     } catch (error) {
-      alert(`Login failed: ${error.message}`);
+      console.error("Login Error:", error);
+      if (error.code === "auth/no-auth-event") {
+        alert("Auth popup blocked. Trying redirect...");
+        await signInWithRedirect(auth, new GoogleAuthProvider());
+      } else {
+        alert(`Login failed: ${error.message}`);
+      }
     }
   };
 
-  // Agent Sign Up Payment Handler (unchanged, but now leads to Firebase integration)
   const handleAgentSignUpPayment = (e) => {
     e.preventDefault();
 
@@ -240,54 +322,20 @@ function App() {
       return;
     }
 
-    // Generate unique transaction ID for agent sign up
-    const transactionId =
-      "AGENT_REG_" +
-      Date.now() +
-      "_" +
-      Math.random().toString(36).substr(2, 9).toUpperCase();
-
-    // Create the anchor element for TheTeller (50 GHS for registration)
-    const anchor = document.createElement("a");
-    anchor.className = "ttlr_inline";
-    anchor.style.display = "none";
-    anchor.setAttribute("data-APIKey", THETELLER_CONFIG.apiKey);
-    anchor.setAttribute("data-transid", transactionId);
-    anchor.setAttribute("data-amount", "50.00");
-    anchor.setAttribute("data-customer_email", STATIC_CUSTOMER_EMAIL);
-    anchor.setAttribute("data-currency", THETELLER_CONFIG.currency);
-    anchor.setAttribute("data-redirect_url", THETELLER_CONFIG.redirectUrl);
-    anchor.setAttribute("data-pay_button_text", THETELLER_CONFIG.payButtonText);
-    anchor.setAttribute(
-      "data-custom_description",
-      "Agent Registration Fee - Lord's Data Portal"
-    );
-    anchor.setAttribute("data-payment_method", THETELLER_CONFIG.paymentMethod);
-
-    document.body.appendChild(anchor);
-
-    // Trigger click
-    anchor.click();
-
-    // Store details for callback
+    setIsPaymentLoading(true);
+    const transactionId = generateTransactionId();
     setAgentSignUpDetails({
       fullName: agentFullName,
       phone: agentPhone,
       email: agentSignUpEmail,
       username: signUpUsername,
-      password: signUpPassword, // Note: In prod, don't store plain password; use Auth
+      password: signUpPassword,
       transid: transactionId,
     });
+    setAgentPaymentTrigger(transactionId);
 
-    // Clean up
     setTimeout(() => {
-      if (document.body.contains(anchor)) {
-        document.body.removeChild(anchor);
-      }
-    }, 1000);
-
-    // Reset form
-    setTimeout(() => {
+      setIsPaymentLoading(false);
       setAgentFullName("");
       setAgentPhone("");
       setAgentSignUpEmail("");
@@ -296,8 +344,21 @@ function App() {
     }, 2000);
   };
 
-  // Handle agent sign up success: Create Firebase user and store in Firestore
+  // Handle agent signup redirect and registration
   useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log("Redirect auth success:", result.user.uid);
+        }
+      } catch (error) {
+        console.error("Redirect result error:", error);
+      }
+    };
+
+    handleRedirectResult();
+
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get("status");
     const code = urlParams.get("code");
@@ -309,10 +370,8 @@ function App() {
       transid &&
       agentSignUpDetails?.transid === transid
     ) {
-      // Register with Firebase
       const registerAgent = async () => {
         try {
-          // Create user with email/password
           const userCredential = await createUserWithEmailAndPassword(
             auth,
             agentSignUpDetails.email,
@@ -320,36 +379,33 @@ function App() {
           );
           const user = userCredential.user;
 
-          // Store additional profile in Firestore 'agents' collection
-          await setDoc(doc(db, "agents", user.uid), {
+          await setDoc(doc(db, "lord's-agents", user.uid), {
             fullName: agentSignUpDetails.fullName,
             phone: agentSignUpDetails.phone,
             username: agentSignUpDetails.username,
             email: agentSignUpDetails.email,
             registeredAt: new Date(),
-            isActive: false, // Admin review needed
+            isActive: false,
           });
 
           console.log("Agent registered successfully:", user.uid);
-          setAgentSignUpModalOpen(true);
+          setAgentSignUpModalOpen(true); // Open agent signup confirmation modal
         } catch (error) {
-          alert(`Registration failed: ${error.message}`);
+          console.error("Signup Error:", error);
+          if (error.code === "auth/no-auth-event") {
+            alert("Signup interrupted. Please retry.");
+          } else {
+            alert(`Registration failed: ${error.message}`);
+          }
         }
       };
 
       registerAgent();
-
-      // Clear URL params
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [agentSignUpDetails]);
 
-  const closeAgentSignUpModal = () => {
-    setAgentSignUpModalOpen(false);
-    setAgentSignUpDetails(null);
-  };
-
-  // Store purchase in Firestore on success
+  // Handle purchase redirect
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get("status");
@@ -362,14 +418,14 @@ function App() {
       transid &&
       purchaseDetails?.transid === transid
     ) {
-      // Store purchase in Firestore
       const storePurchase = async () => {
         try {
-          await addDoc(collection(db, "purchases"), {
+          await addDoc(collection(db, "teller_response"), {
             ...purchaseDetails,
             email: STATIC_CUSTOMER_EMAIL,
             purchasedAt: new Date(),
-            userId: currentUser ? currentUser.uid : null, // If logged in
+            userId: currentUser ? currentUser.uid : null,
+            exported: false,
           });
           console.log("Purchase stored in Firestore");
         } catch (error) {
@@ -379,7 +435,6 @@ function App() {
 
       storePurchase();
       setModalIsOpen(true);
-      // Clear URL params
       window.history.replaceState({}, document.title, window.location.pathname);
     }
   }, [purchaseDetails, currentUser]);
@@ -390,47 +445,19 @@ function App() {
     const finalBundle = getSelectedBundle;
 
     if (!finalBundle) {
+      console.error("Invalid bundle selected");
       alert("Please select a valid bundle.");
       return;
     }
 
     if (recipientPhoneNumber.length !== 10) {
+      console.error("Invalid phone number:", recipientPhoneNumber);
       alert("Please enter a valid 10-digit phone number.");
       return;
     }
 
-    // Generate unique transaction ID (in production, use a proper UUID or backend-generated ID)
-    const transactionId =
-      "TXN_" +
-      Date.now() +
-      "_" +
-      Math.random().toString(36).substr(2, 9).toUpperCase();
-
-    // Create the anchor element for TheTeller
-    const anchor = document.createElement("a");
-    anchor.className = "ttlr_inline";
-    anchor.style.display = "none"; // Hide the anchor since we're triggering programmatically
-    anchor.setAttribute("data-APIKey", THETELLER_CONFIG.apiKey);
-    anchor.setAttribute("data-transid", transactionId);
-    anchor.setAttribute("data-amount", finalBundle.price.toFixed(2));
-    anchor.setAttribute("data-customer_email", STATIC_CUSTOMER_EMAIL);
-    anchor.setAttribute("data-currency", THETELLER_CONFIG.currency);
-    anchor.setAttribute("data-redirect_url", THETELLER_CONFIG.redirectUrl);
-    anchor.setAttribute("data-pay_button_text", THETELLER_CONFIG.payButtonText);
-    anchor.setAttribute(
-      "data-custom_description",
-      `${THETELLER_CONFIG.customDescription} - ${
-        finalBundle.gb
-      }GB ${selectedProvider.toUpperCase()}`
-    );
-    anchor.setAttribute("data-payment_method", THETELLER_CONFIG.paymentMethod);
-
-    document.body.appendChild(anchor);
-
-    // Trigger click on the anchor to open TheTeller modal
-    anchor.click();
-
-    // Store details for potential callback handling
+    setIsPaymentLoading(true);
+    const transactionId = generateTransactionId();
     setPurchaseDetails({
       provider: selectedProvider.toUpperCase(),
       gb: finalBundle.gb,
@@ -438,21 +465,11 @@ function App() {
       number: recipientPhoneNumber,
       transid: transactionId,
     });
+    setPaymentTrigger(transactionId);
 
-    // Clean up
     setTimeout(() => {
-      if (document.body.contains(anchor)) {
-        document.body.removeChild(anchor);
-      }
-    }, 1000);
-
-    // Reset form after initiating payment
-    setTimeout(() => {
-      setRecipientPhoneNumber("");
-      setSelectedProvider("airtel");
+      setIsPaymentLoading(false);
     }, 2000);
-
-    // Note: Success modal will be shown via URL callback or webhook in production
   };
 
   return (
@@ -467,7 +484,6 @@ function App() {
           <FaWifi className="wifi-icon" />
           <h1>Lord's Data</h1>
         </motion.div>
-
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -480,8 +496,6 @@ function App() {
           )}
         </motion.p>
       </header>
-
-      {/* -------------------- NEW ACTION BUTTONS SECTION -------------------- */}
       <motion.section
         className="action-buttons-section"
         initial={{ opacity: 0, scale: 0.9 }}
@@ -509,8 +523,6 @@ function App() {
           </motion.button>
         </div>
       </motion.section>
-
-      {/* -------------------- AGENT USSD CODE DISPLAY -------------------- */}
       <motion.section
         className="agent-ussd-card"
         initial={{ opacity: 0, scale: 0.9 }}
@@ -528,8 +540,6 @@ function App() {
           </div>
         </div>
       </motion.section>
-
-      {/* -------------------- PURCHASE FORM -------------------- */}
       <motion.section
         className="purchase-form-container"
         initial={{ opacity: 0, scale: 0.9 }}
@@ -558,7 +568,6 @@ function App() {
               ))}
             </select>
           </motion.div>
-
           <motion.div
             className="form-group"
             initial={{ x: -20, opacity: 0 }}
@@ -579,7 +588,6 @@ function App() {
               ))}
             </select>
           </motion.div>
-
           <motion.div
             className="form-group"
             initial={{ x: -20, opacity: 0 }}
@@ -597,23 +605,42 @@ function App() {
               placeholder="Enter 10-digit number"
             />
           </motion.div>
-
+          {paymentTrigger && purchaseDetails && (
+            <motion.a
+              className="ttlr_inline"
+              data-apikey={THETELLER_CONFIG.apiKey}
+              data-transid={purchaseDetails.transid}
+              data-amount={purchaseDetails.price.toFixed(2)}
+              data-customer_email={STATIC_CUSTOMER_EMAIL}
+              data-currency={THETELLER_CONFIG.currency}
+              data-redirect_url={THETELLER_CONFIG.redirectUrl}
+              data-pay_button_text={THETELLER_CONFIG.payButtonText}
+              data-custom_description={`${THETELLER_CONFIG.customDescription} - ${purchaseDetails.gb}GB ${purchaseDetails.provider}`}
+              data-payment_method={THETELLER_CONFIG.paymentMethod}
+            >
+              {isPaymentLoading
+                ? "Processing..."
+                : `Pay GHS ${purchaseDetails.price.toFixed(2)}`}
+            </motion.a>
+          )}
           <motion.button
             type="submit"
             className="submit-button"
-            disabled={!getSelectedBundle || recipientPhoneNumber.length !== 10}
+            disabled={
+              !getSelectedBundle ||
+              recipientPhoneNumber.length !== 10 ||
+              isPaymentLoading
+            }
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 1.0 }}
           >
-            Pay GHS {getSelectedBundle?.price.toFixed(2) || "0.00"} Securely
+            Proceed to Payment
           </motion.button>
         </form>
       </motion.section>
-
-      {/* -------------------- CONTACT SUPPORT SECTION -------------------- */}
       <motion.section
         className="contact-support"
         initial={{ opacity: 0, y: 30 }}
@@ -628,10 +655,8 @@ function App() {
           </a>
         </p>
       </motion.section>
-
-      {/* -------------------- WHATSAPP ICON -------------------- */}
       <motion.a
-        href="https://wa.me/233555555555" // Replace with your actual WhatsApp number
+        href="https://wa.me/233555555555"
         target="_blank"
         rel="noopener noreferrer"
         className="whatsapp-float"
@@ -642,8 +667,6 @@ function App() {
       >
         <FaWhatsapp size={30} />
       </motion.a>
-
-      {/* -------------------- PURCHASE SUCCESS MODAL -------------------- */}
       <Modal
         isOpen={modalIsOpen}
         onRequestClose={closeModal}
@@ -673,8 +696,6 @@ function App() {
           </motion.button>
         </motion.div>
       </Modal>
-
-      {/* -------------------- CHECK DATA STATUS MODAL -------------------- */}
       <Modal
         isOpen={checkDataModalOpen}
         onRequestClose={closeCheckDataModal}
@@ -722,8 +743,6 @@ function App() {
           </motion.button>
         </motion.div>
       </Modal>
-
-      {/* -------------------- AGENT PORTAL MODAL (LOGIN/SIGN UP TOGGLE) -------------------- */}
       <Modal
         isOpen={agentPortalModalOpen}
         onRequestClose={closeAgentPortalModal}
@@ -755,7 +774,6 @@ function App() {
               Sign Up
             </button>
           </div>
-
           {isSignUp ? (
             <>
               <p>
@@ -818,6 +836,27 @@ function App() {
                     placeholder="Enter your password"
                   />
                 </div>
+                {agentPaymentTrigger && agentSignUpDetails && (
+                  <motion.a
+                    className="ttlr_inline"
+                    href="#"
+                    role="button"
+                    data-apikey={THETELLER_CONFIG.apiKey}
+                    data-transid={agentSignUpDetails.transid}
+                    data-amount="50.00"
+                    data-customer_email={STATIC_CUSTOMER_EMAIL}
+                    data-currency={THETELLER_CONFIG.currency}
+                    data-redirect_url={THETELLER_CONFIG.redirectUrl}
+                    data-pay_button_text={THETELLER_CONFIG.payButtonText}
+                    data-custom_description="Agent Registration Fee - Lord's Data Portal"
+                    data-payment_method={THETELLER_CONFIG.paymentMethod}
+                    aria-label="Initiate agent registration payment with Theteller"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    {isPaymentLoading ? "Processing..." : "Pay GHS 50"}
+                  </motion.a>
+                )}
                 <motion.button
                   type="submit"
                   className="submit-button"
@@ -826,12 +865,13 @@ function App() {
                     agentPhone.length !== 10 ||
                     !agentSignUpEmail ||
                     !signUpUsername ||
-                    !signUpPassword
+                    !signUpPassword ||
+                    isPaymentLoading
                   }
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Pay GHS 50 & Sign Up
+                  Proceed to Payment
                 </motion.button>
               </form>
             </>
@@ -882,8 +922,6 @@ function App() {
           </motion.button>
         </motion.div>
       </Modal>
-
-      {/* -------------------- AGENT SIGN UP SUCCESS MODAL -------------------- */}
       <Modal
         isOpen={agentSignUpModalOpen}
         onRequestClose={closeAgentSignUpModal}
