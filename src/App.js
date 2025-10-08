@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Modal from "react-modal";
 import {
@@ -15,15 +16,16 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   GoogleAuthProvider,
+  sendEmailVerification,
 } from "firebase/auth";
 import {
-  collection,
-  addDoc,
   doc,
   setDoc,
-  getDocs,
+  collection,
+  addDoc,
   query,
   where,
+  getDocs,
 } from "firebase/firestore";
 import { db, auth, functions } from "./Firebase";
 import { httpsCallable } from "firebase/functions";
@@ -34,7 +36,7 @@ Modal.setAppElement("#root");
 const AGENT_USSD_CODE = "*920*177#";
 
 const THETELLER_CONFIG = {
-  merchantId: "TTM-00009769", // Replace with your Theteller merchant ID
+  merchantId: "TTM-00009769",
   currency: "GHS",
   paymentMethod: "both",
   redirectUrl: window.location.href,
@@ -103,12 +105,12 @@ const providersData = {
 };
 
 function App() {
+  const navigate = useNavigate();
   const [selectedProvider, setSelectedProvider] = useState("airtel");
   const [selectedBundleSize, setSelectedBundleSize] = useState("1");
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [purchaseDetails, setPurchaseDetails] = useState(() => {
-    // Load from localStorage on mount
     const saved = localStorage.getItem("purchaseDetails");
     return saved ? JSON.parse(saved) : null;
   });
@@ -130,8 +132,8 @@ function App() {
   });
   const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
+  const [signupError, setSignupError] = useState("");
 
-  // Generate unique transaction ID
   const generateTransactionId = () => {
     const array = new Uint32Array(1);
     crypto.getRandomValues(array);
@@ -177,7 +179,6 @@ function App() {
     );
   }, [selectedProvider]);
 
-  // Persist purchaseDetails and agentSignUpDetails to localStorage
   useEffect(() => {
     if (purchaseDetails) {
       localStorage.setItem("purchaseDetails", JSON.stringify(purchaseDetails));
@@ -194,11 +195,22 @@ function App() {
     }
   }, [purchaseDetails, agentSignUpDetails]);
 
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const transid = urlParams.get("transaction_id");
+    if (transid && (!purchaseDetails || purchaseDetails.transid !== transid)) {
+      console.log("Clearing stale purchaseDetails due to mismatch or absence");
+      setPurchaseDetails(null);
+      localStorage.removeItem("purchaseDetails");
+    }
+  }, []);
+
   const closeModal = () => {
     setModalIsOpen(false);
     setRecipientPhoneNumber("");
     setSelectedProvider("airtel");
-    setPurchaseDetails(null); // Clear purchaseDetails
+    setPurchaseDetails(null);
+    localStorage.removeItem("purchaseDetails");
   };
 
   const closeCheckDataModal = () => {
@@ -209,6 +221,8 @@ function App() {
   const closeAgentSignUpModal = () => {
     setAgentSignUpModalOpen(false);
     setAgentSignUpDetails(null);
+    localStorage.removeItem("agentSignUpDetails");
+    navigate("/agent-portal");
   };
 
   const closeAgentPortalModal = () => {
@@ -216,6 +230,7 @@ function App() {
     setAgentEmail("");
     setAgentPassword("");
     setIsSignUp(false);
+    setSignupError("");
   };
 
   const handleCheckData = async (e) => {
@@ -259,9 +274,9 @@ function App() {
       } else {
         alert(
           `Data bundle for ${dataPhoneNumber} is pending processing.\nTransaction ID: ${
-            data.transaction_id || "N/A"
+            data.transid || "N/A"
           }\nStatus: ${data.status || "Pending"}\nCreated: ${
-            data.createdAt?.toDate?.()?.toLocaleString() || "N/A"
+            data.purchasedAt?.toDate?.()?.toLocaleString() || "N/A"
           }`
         );
       }
@@ -282,10 +297,9 @@ function App() {
 
     try {
       await signInWithEmailAndPassword(auth, agentEmail, agentPassword);
-      alert(
-        `Logged in as agent with email ${agentEmail}! (Placeholder: Welcome to Agent Dashboard)`
-      );
+      alert(`Logged in as agent with email ${agentEmail}!`);
       closeAgentPortalModal();
+      navigate("/agent-portal");
     } catch (error) {
       console.error("Login Error:", error);
       if (error.code === "auth/no-auth-event") {
@@ -307,21 +321,42 @@ function App() {
       !signUpUsername ||
       !signUpPassword
     ) {
-      alert("Please fill all fields.");
+      setSignupError("Please fill all fields.");
       return;
     }
 
-    if (agentPhone.length !== 10) {
-      alert("Please enter a valid 10-digit phone number.");
+    if (agentPhone.length !== 10 || !/^\d{10}$/.test(agentPhone)) {
+      setSignupError("Please enter a valid 10-digit phone number.");
       return;
     }
 
-    if (!agentSignUpEmail.includes("@")) {
-      alert("Please enter a valid email address.");
+    if (
+      !agentSignUpEmail.match(
+        /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+      )
+    ) {
+      setSignupError("Please enter a valid email address.");
+      return;
+    }
+
+    try {
+      const checkEmailUniqueness = httpsCallable(
+        functions,
+        "checkEmailUniqueness"
+      );
+      const result = await checkEmailUniqueness({ email: agentSignUpEmail });
+      if (result.data.exists) {
+        setSignupError("An agent with this email already exists.");
+        return;
+      }
+    } catch (error) {
+      console.error("Error checking existing email:", error);
+      setSignupError("Error checking email availability. Please try again.");
       return;
     }
 
     setIsPaymentLoading(true);
+    setSignupError("");
     const transactionId = generateTransactionId();
     setAgentSignUpDetails({
       fullName: agentFullName,
@@ -337,7 +372,7 @@ function App() {
         functions,
         "initiateThetellerPayment"
       );
-      const amountInPesewas = (50.0 * 100).toFixed(0); // Convert 50.00 GHS to 5000 pesewas
+      const amountInPesewas = (50.0 * 100).toFixed(0);
       const result = await initiateThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
@@ -347,30 +382,26 @@ function App() {
         email: STATIC_CUSTOMER_EMAIL,
       });
       const { checkout_url } = result.data;
-      window.location.href = checkout_url; // Redirect to Theteller checkout
+      window.location.href = checkout_url;
     } catch (error) {
       console.error("Error initiating agent signup payment:", error);
-      alert(`Payment initiation failed: ${error.message}`);
+      setSignupError(`Payment initiation failed: ${error.message}`);
     } finally {
       setIsPaymentLoading(false);
-      setAgentFullName("");
-      setAgentPhone("");
-      setAgentSignUpEmail("");
-      setSignUpUsername("");
-      setSignUpPassword("");
     }
   };
 
-  // Handle agent signup redirect and registration
   useEffect(() => {
     const handleRedirectResult = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
           console.log("Redirect auth success:", result.user.uid);
+          navigate("/agent-portal");
         }
       } catch (error) {
         console.error("Redirect result error:", error);
+        setSignupError(`Authentication failed: ${error.message}`);
       }
     };
 
@@ -389,12 +420,26 @@ function App() {
     ) {
       const registerAgent = async () => {
         try {
+          const checkEmailUniqueness = httpsCallable(
+            functions,
+            "checkEmailUniqueness"
+          );
+          const result = await checkEmailUniqueness({
+            email: agentSignUpDetails.email,
+          });
+          if (result.data.exists) {
+            setSignupError("An agent with this email already exists.");
+            return;
+          }
+
           const userCredential = await createUserWithEmailAndPassword(
             auth,
             agentSignUpDetails.email,
             agentSignUpDetails.password
           );
           const user = userCredential.user;
+
+          await sendEmailVerification(user);
 
           await setDoc(doc(db, "lord's-agents", user.uid), {
             fullName: agentSignUpDetails.fullName,
@@ -409,20 +454,15 @@ function App() {
           setAgentSignUpModalOpen(true);
         } catch (error) {
           console.error("Signup Error:", error);
-          if (error.code === "auth/no-auth-event") {
-            alert("Signup interrupted. Please retry.");
-          } else {
-            alert(`Registration failed: ${error.message}`);
-          }
+          setSignupError(`Registration failed: ${error.message}`);
         }
       };
 
       registerAgent();
       window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [agentSignUpDetails]);
+  }, [agentSignUpDetails, navigate]);
 
-  // Handle purchase redirect
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const status = urlParams.get("status");
@@ -432,45 +472,117 @@ function App() {
     const amount = urlParams.get("amount");
     const subscriber_number = urlParams.get("subscriber_number");
 
-    if (
-      status === "approved" &&
-      code === "000" &&
-      transid &&
-      purchaseDetails?.transid === transid
-    ) {
-      const storePurchase = async () => {
-        try {
-          await addDoc(collection(db, "teller_response"), {
-            ...purchaseDetails,
-            email: STATIC_CUSTOMER_EMAIL,
-            purchasedAt: new Date(),
-            userId: currentUser ? currentUser.uid : null,
-            exported: false,
-            subscriber_number: purchaseDetails.number.startsWith("0")
-              ? `233${purchaseDetails.number.slice(1)}`
-              : `233${purchaseDetails.number}`,
-            r_switch: r_switch || "N/A", // Store provider from Theteller
-            amount: parseFloat(amount).toFixed(2), // Store amount in GHS
-          });
-          console.log(
-            "Purchase stored in Firestore with transaction ID:",
-            transid
-          );
-        } catch (error) {
-          console.error("Error storing purchase:", error);
-          alert("Failed to store purchase. Please contact support.");
-        }
-      };
+    if (!transid || !purchaseDetails) {
+      if (transid) {
+        console.warn("Missing purchaseDetails for transaction:", {
+          transid,
+          status,
+          code,
+        });
+        alert("Purchase session expired. Please try the purchase again.");
+        setPurchaseDetails(null);
+        localStorage.removeItem("purchaseDetails");
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+      }
+      return;
+    }
 
-      storePurchase();
-      setModalIsOpen(true);
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (status && transid && purchaseDetails?.transid !== transid) {
+    if (purchaseDetails.transid !== transid) {
       console.warn("Transaction ID mismatch:", {
         urlTransId: transid,
         purchaseDetails,
+        status,
+        code,
+        amount,
+        subscriber_number,
+        r_switch,
       });
       alert("Transaction ID mismatch. Please try the purchase again.");
+      setPurchaseDetails(null);
+      localStorage.removeItem("purchaseDetails");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    // Validate subscriber_number
+    const expectedSubscriberNumber = purchaseDetails.number.startsWith("0")
+      ? `233${purchaseDetails.number.slice(1)}`
+      : `233${purchaseDetails.number}`;
+    if (subscriber_number && subscriber_number !== expectedSubscriberNumber) {
+      console.warn("Subscriber number mismatch:", {
+        expected: expectedSubscriberNumber,
+        received: subscriber_number,
+        transid,
+        purchaseDetails,
+      });
+      alert(
+        "Invalid phone number returned. Please try the purchase again or contact support at 0245687544."
+      );
+      setPurchaseDetails(null);
+      localStorage.removeItem("purchaseDetails");
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
+    const storePurchase = async (isDeclined = false) => {
+      try {
+        await addDoc(collection(db, "teller_response"), {
+          ...purchaseDetails,
+          email: STATIC_CUSTOMER_EMAIL,
+          purchasedAt: new Date(),
+          userId: currentUser ? currentUser.uid : null,
+          exported: false,
+          subscriber_number: expectedSubscriberNumber,
+          r_switch: r_switch || purchaseDetails.provider,
+          amount: parseFloat(amount || purchaseDetails.price).toFixed(2),
+          status: isDeclined ? status : "approved",
+          code: code || (isDeclined ? "020" : "000"),
+        });
+        console.log(
+          `Purchase ${
+            isDeclined ? "declined" : "stored"
+          } in Firestore with transaction ID:`,
+          transid
+        );
+        if (!isDeclined) {
+          setModalIsOpen(true);
+        }
+      } catch (error) {
+        console.error("Error storing purchase:", error);
+        alert(
+          "Failed to store purchase. Please contact support at 0245687544."
+        );
+      } finally {
+        setPurchaseDetails(null);
+        localStorage.removeItem("purchaseDetails");
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+      }
+    };
+
+    if (status === "approved" && code === "000") {
+      storePurchase(false);
+    } else {
+      console.warn("Transaction declined or failed:", {
+        urlTransId: transid,
+        purchaseDetails,
+        status,
+        code,
+        amount,
+        subscriber_number,
+        r_switch,
+      });
+      alert(
+        `Payment declined (Code: ${code}). Please check your payment method and try again or contact support at 0245687544.`
+      );
+      storePurchase(true); // Store declined transaction
     }
   }, [purchaseDetails, currentUser]);
 
@@ -491,12 +603,17 @@ function App() {
       return;
     }
 
+    if (isPaymentLoading) {
+      console.warn("Payment already in progress");
+      return;
+    }
+
     setIsPaymentLoading(true);
     const transactionId = generateTransactionId();
     const newPurchaseDetails = {
       provider: selectedProvider.toUpperCase(),
       gb: finalBundle.gb,
-      price: finalBundle.price, // Store in GHS for display
+      price: finalBundle.price,
       number: recipientPhoneNumber,
       transid: transactionId,
     };
@@ -507,7 +624,7 @@ function App() {
         functions,
         "initiateThetellerPayment"
       );
-      const amountInPesewas = (finalBundle.price * 100).toFixed(0); // Convert GHS to pesewas
+      const amountInPesewas = (finalBundle.price * 100).toFixed(0);
       const result = await initiateThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
@@ -517,12 +634,17 @@ function App() {
         amount: amountInPesewas,
         redirect_url: THETELLER_CONFIG.redirectUrl,
         email: STATIC_CUSTOMER_EMAIL,
+        subscriber_number: recipientPhoneNumber.startsWith("0")
+          ? `233${recipientPhoneNumber.slice(1)}`
+          : `233${recipientPhoneNumber}`,
       });
       const { checkout_url } = result.data;
-      window.location.href = checkout_url; // Redirect to Theteller checkout
+      window.location.href = checkout_url;
     } catch (error) {
       console.error("Error initiating purchase payment:", error);
       alert(`Payment initiation failed: ${error.message}`);
+      setPurchaseDetails(null);
+      localStorage.removeItem("purchaseDetails");
     } finally {
       setIsPaymentLoading(false);
     }
@@ -817,6 +939,14 @@ function App() {
               <p>
                 Complete the form and pay GHS 50 registration fee to sign up.
               </p>
+              {signupError && (
+                <p
+                  className="error-message"
+                  style={{ color: "red", marginBottom: "10px" }}
+                >
+                  {signupError}
+                </p>
+              )}
               <form onSubmit={handleAgentSignUpPayment} className="simple-form">
                 <div className="form-group">
                   <label htmlFor="agent-fullname">Full Name:</label>
@@ -957,8 +1087,9 @@ function App() {
             50 has been received.
           </p>
           <p>
-            Your account has been created. You will receive an email for
-            verification. Contact support for queries.
+            Your account has been created. Please check your email (**
+            {agentSignUpDetails?.email}**) for a verification link to activate
+            your account. Contact support for queries.
           </p>
           <motion.button
             onClick={closeAgentSignUpModal}
