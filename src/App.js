@@ -339,22 +339,6 @@ function App() {
       return;
     }
 
-    try {
-      const checkEmailUniqueness = httpsCallable(
-        functions,
-        "checkEmailUniqueness"
-      );
-      const result = await checkEmailUniqueness({ email: agentSignUpEmail });
-      if (result.data.exists) {
-        setSignupError("An agent with this email already exists.");
-        return;
-      }
-    } catch (error) {
-      console.error("Error checking existing email:", error);
-      setSignupError("Error checking email availability. Please try again.");
-      return;
-    }
-
     setIsPaymentLoading(true);
     setSignupError("");
     const transactionId = generateTransactionId();
@@ -372,7 +356,7 @@ function App() {
         functions,
         "initiateThetellerPayment"
       );
-      const amountInPesewas = (50.0 * 100).toFixed(0);
+      const amountInPesewas = (5.0 * 100).toFixed(0);
       const result = await initiateThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
@@ -420,18 +404,6 @@ function App() {
     ) {
       const registerAgent = async () => {
         try {
-          const checkEmailUniqueness = httpsCallable(
-            functions,
-            "checkEmailUniqueness"
-          );
-          const result = await checkEmailUniqueness({
-            email: agentSignUpDetails.email,
-          });
-          if (result.data.exists) {
-            setSignupError("An agent with this email already exists.");
-            return;
-          }
-
           const userCredential = await createUserWithEmailAndPassword(
             auth,
             agentSignUpDetails.email,
@@ -454,7 +426,11 @@ function App() {
           setAgentSignUpModalOpen(true);
         } catch (error) {
           console.error("Signup Error:", error);
-          setSignupError(`Registration failed: ${error.message}`);
+          if (error.code === "auth/email-already-in-use") {
+            setSignupError("An account with this email already exists.");
+          } else {
+            setSignupError(`Registration failed: ${error.message}`);
+          }
         }
       };
 
@@ -487,6 +463,7 @@ function App() {
           document.title,
           window.location.pathname
         );
+        return;
       }
       return;
     }
@@ -508,24 +485,36 @@ function App() {
       return;
     }
 
-    // Validate subscriber_number
+    // Normalize subscriber_number
+    let normalizedSubscriberNumber = subscriber_number;
+    if (
+      subscriber_number &&
+      subscriber_number.startsWith("0") &&
+      subscriber_number.length === 10
+    ) {
+      normalizedSubscriberNumber = `233${subscriber_number.slice(1)}`;
+    } else if (subscriber_number && !subscriber_number.startsWith("233")) {
+      console.warn("Unexpected subscriber_number format:", {
+        subscriber_number,
+      });
+    }
+
     const expectedSubscriberNumber = purchaseDetails.number.startsWith("0")
       ? `233${purchaseDetails.number.slice(1)}`
       : `233${purchaseDetails.number}`;
-    if (subscriber_number && subscriber_number !== expectedSubscriberNumber) {
-      console.warn("Subscriber number mismatch:", {
+
+    if (
+      normalizedSubscriberNumber &&
+      normalizedSubscriberNumber !== expectedSubscriberNumber
+    ) {
+      console.warn("Subscriber number mismatch after normalization:", {
         expected: expectedSubscriberNumber,
         received: subscriber_number,
+        normalized: normalizedSubscriberNumber,
         transid,
         purchaseDetails,
       });
-      alert(
-        "Invalid phone number returned. Please try the purchase again or contact support at 0245687544."
-      );
-      setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
+      // Allow the transaction to proceed instead of failing
     }
 
     const storePurchase = async (isDeclined = false) => {
@@ -536,7 +525,8 @@ function App() {
           purchasedAt: new Date(),
           userId: currentUser ? currentUser.uid : null,
           exported: false,
-          subscriber_number: expectedSubscriberNumber,
+          subscriber_number:
+            normalizedSubscriberNumber || expectedSubscriberNumber,
           r_switch: r_switch || purchaseDetails.provider,
           amount: parseFloat(amount || purchaseDetails.price).toFixed(2),
           status: isDeclined ? status : "approved",
@@ -580,9 +570,9 @@ function App() {
         r_switch,
       });
       alert(
-        `Payment declined (Code: ${code}). Please check your payment method and try again or contact support at 0245687544.`
+        `Payment declined. Please check your payment method and try again or contact support at 0245687544.`
       );
-      storePurchase(true); // Store declined transaction
+      storePurchase(true);
     }
   }, [purchaseDetails, currentUser]);
 
@@ -725,6 +715,10 @@ function App() {
         transition={{ duration: 0.6, delay: 0.5 }}
       >
         <h2>Select and Buy Bundle</h2>
+        <p className="disclaimer-message">
+          <strong>Disclaimer:</strong> Data purchased will be credited to your
+          account within 15 minutes to 1 hour after successful payment.
+        </p>
         <form onSubmit={handlePurchase} className="purchase-form">
           <motion.div
             className="form-group"
@@ -810,8 +804,8 @@ function App() {
         <h3>Need Help?</h3>
         <p>
           For any issue or concern, contact{" "}
-          <a href="tel:0245687544" className="contact-number">
-            0245687544
+          <a href="tel:0240964167" className="contact-number">
+            0240964167
           </a>
         </p>
       </motion.section>
@@ -845,7 +839,7 @@ function App() {
             bundle from **{purchaseDetails?.provider}** for **GHS{" "}
             {purchaseDetails?.price.toFixed(2)}**.
           </p>
-          <p>The bundle has been credited to **{purchaseDetails?.number}**.</p>
+          <p>The bundle will be processed shortly.</p>
           <motion.button
             onClick={closeModal}
             whileHover={{ scale: 1.1 }}
@@ -1087,9 +1081,7 @@ function App() {
             50 has been received.
           </p>
           <p>
-            Your account has been created. Please check your email (**
-            {agentSignUpDetails?.email}**) for a verification link to activate
-            your account. Contact support for queries.
+            Your account has been created. Kindly login and start selling data
           </p>
           <motion.button
             onClick={closeAgentSignUpModal}
