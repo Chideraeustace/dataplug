@@ -356,7 +356,7 @@ function App() {
         functions,
         "initiateThetellerPayment"
       );
-      const amountInPesewas = (5.0 * 100).toFixed(0);
+      const amountInPesewas = (50.0 * 100).toFixed(0);
       const result = await initiateThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
