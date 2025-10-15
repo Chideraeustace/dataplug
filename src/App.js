@@ -522,7 +522,7 @@ function App() {
         await addDoc(collection(db, "teller_response"), {
           ...purchaseDetails,
           email: STATIC_CUSTOMER_EMAIL,
-          purchasedAt: new Date(),
+          createdAt: new Date(),
           userId: currentUser ? currentUser.uid : null,
           exported: false,
           subscriber_number:

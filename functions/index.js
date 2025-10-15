@@ -68,12 +68,12 @@ exports.initiateThetellerPayment = onCall(
     try {
       // Make POST request to Theteller's initiate endpoint
       const response = await axios.post(
-        "https://checkout-test.theteller.net/initiate",
+        "https://checkout.theteller.net/initiate",
         requestBody,
         {
           headers: {
             "Content-Type": "application/json",
-            "Authorization": "Basic eXVzc2lmNjcwZDM4M2NhZjU0NDpObVk0TkdOa056RmhNRGs1WldJM01tTmlObUZsWVdJek16WXhNVGxoT1RZPQ==",
+            "Authorization": "Basic eXVzc2lmNjcwZDM4M2NhZjU0NDpaV0kxWWpOallURmhOMk5qTTJFME5HRmpPVFJtWWpreU5UZzNaVGxtTjJNPQ==",
             "Cache-Control": "no-cache",
           },
         }
