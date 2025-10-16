@@ -33,7 +33,7 @@ import "./App.css";
 
 Modal.setAppElement("#root");
 
-const AGENT_USSD_CODE = "*920*177#";
+const AGENT_USSD_CODE = "*928*010#";
 
 const THETELLER_CONFIG = {
   merchantId: "TTM-00009769",
