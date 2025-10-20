@@ -2,13 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Modal from "react-modal";
-import {
-  FaWhatsapp,
-  FaMobileAlt,
-  FaWifi,
-  FaSearch,
-  FaUserShield,
-} from "react-icons/fa";
+import { FaWhatsapp, FaWifi, FaSearch, FaUserShield } from "react-icons/fa";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -30,10 +24,12 @@ import {
 import { db, auth, functions } from "./Firebase";
 import { httpsCallable } from "firebase/functions";
 import "./App.css";
+import mtn from "./download.png"
+import airtel from "./airtel.png"
+import telecel from "./telecel.png"
+
 
 Modal.setAppElement("#root");
-
-const AGENT_USSD_CODE = "*928*010#";
 
 const THETELLER_CONFIG = {
   merchantId: "TTM-00009769",
@@ -133,6 +129,12 @@ function App() {
   const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [signupError, setSignupError] = useState("");
+
+  const providerLogos = {
+    mtn: mtn,
+    airtel: airtel,
+    telecel: telecel,
+  };
 
   const generateTransactionId = () => {
     const array = new Uint32Array(1);
@@ -485,7 +487,6 @@ function App() {
       return;
     }
 
-    // Normalize subscriber_number
     let normalizedSubscriberNumber = subscriber_number;
     if (
       subscriber_number &&
@@ -514,7 +515,6 @@ function App() {
         transid,
         purchaseDetails,
       });
-      // Allow the transaction to proceed instead of failing
     }
 
     const storePurchase = async (isDeclined = false) => {
@@ -659,9 +659,7 @@ function App() {
           className="subtitle"
         >
           Easy & Affordable Data Bundle Purchase
-          {currentUser && (
-            <span> | Welcome, {currentUser.email} (Agent Logged In)</span>
-          )}
+          {currentUser && <span> | Welcome, {currentUser.email} (Agent)</span>}
         </motion.p>
       </header>
       <motion.section
@@ -692,20 +690,27 @@ function App() {
         </div>
       </motion.section>
       <motion.section
-        className="agent-ussd-card"
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
+        className="provider-logos-section"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.4 }}
       >
-        <div className="agent-ussd-content">
-          <FaMobileAlt size={30} />
-          <div>
-            <h3>Buy via USSD (Agent Code)</h3>
-            <p>Dial this code to purchase bundles directly from Lord's Data:</p>
-            <span className="ussd-code-display primary-code">
-              {AGENT_USSD_CODE}
-            </span>
-          </div>
+        <h3 className="provider-logos-title">Supported Networks</h3>
+        <div className="provider-logos-container">
+          {Object.keys(providerLogos).map((provider) => (
+            <motion.div
+              key={provider}
+              className="provider-logo"
+              whileHover={{ scale: 1.1 }}
+              transition={{ type: "spring", stiffness: 300 }}
+            >
+              <img
+                src={providerLogos[provider]}
+                alt={`${provider} logo`}
+                className="provider-logo-img"
+              />
+            </motion.div>
+          ))}
         </div>
       </motion.section>
       <motion.section
@@ -714,10 +719,10 @@ function App() {
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.6, delay: 0.5 }}
       >
-        <h2>Select and Buy Bundle</h2>
+        <h2>Purchase Data Bundle</h2>
         <p className="disclaimer-message">
-          <strong>Disclaimer:</strong> Data purchased will be credited to your
-          account within 15 minutes to 1 hour after successful payment.
+          <strong>Disclaimer:</strong> Data will be credited within 15 minutes
+          to 4 hour after payment.
         </p>
         <form onSubmit={handlePurchase} className="purchase-form">
           <motion.div
@@ -803,14 +808,14 @@ function App() {
       >
         <h3>Need Help?</h3>
         <p>
-          For any issue or concern, contact{" "}
+          Contact{" "}
           <a href="tel:0240964167" className="contact-number">
             0240964167
           </a>
         </p>
       </motion.section>
       <motion.a
-        href="https://wa.me/233555555555"
+        href="https://wa.me/233240964167"
         target="_blank"
         rel="noopener noreferrer"
         className="whatsapp-float"
@@ -835,9 +840,10 @@ function App() {
         >
           <h2>🎉 Purchase Successful! 🎉</h2>
           <p>
-            You have successfully purchased a **{purchaseDetails?.gb} GB**
-            bundle from **{purchaseDetails?.provider}** for **GHS{" "}
-            {purchaseDetails?.price.toFixed(2)}**.
+            You have successfully purchased a{" "}
+            <strong>{purchaseDetails?.gb} GB</strong> bundle from{" "}
+            <strong>{purchaseDetails?.provider}</strong> for{" "}
+            <strong>GHS {purchaseDetails?.price.toFixed(2)}</strong>.
           </p>
           <p>The bundle will be processed shortly.</p>
           <motion.button
@@ -1015,10 +1021,17 @@ function App() {
                   {isPaymentLoading ? "Processing..." : "Proceed to Payment"}
                 </motion.button>
               </form>
+              <motion.button
+                onClick={closeAgentPortalModal}
+                className="close-modal-button secondary"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Cancel
+              </motion.button>
             </>
           ) : (
             <>
-              <p>Login to access your agent dashboard.</p>
               <form onSubmit={handleAgentLogin} className="simple-form">
                 <div className="form-group">
                   <label htmlFor="agent-email">Email:</label>
@@ -1045,22 +1058,23 @@ function App() {
                 <motion.button
                   type="submit"
                   className="submit-button"
+                  disabled={!agentEmail || !agentPassword || isPaymentLoading}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Login
+                  {isPaymentLoading ? "Processing..." : "Login"}
                 </motion.button>
               </form>
+              <motion.button
+                onClick={closeAgentPortalModal}
+                className="close-modal-button secondary"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Cancel
+              </motion.button>
             </>
           )}
-          <motion.button
-            onClick={closeAgentPortalModal}
-            className="close-modal-button secondary"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            Cancel
-          </motion.button>
         </motion.div>
       </Modal>
       <Modal
@@ -1076,13 +1090,7 @@ function App() {
           className="success-message"
         >
           <h2>🎉 Agent Registration Successful! 🎉</h2>
-          <p>
-            Thank you, **{agentSignUpDetails?.fullName}**! Your payment of GHS
-            50 has been received.
-          </p>
-          <p>
-            Your account has been created. Kindly login and start selling data
-          </p>
+          <p>Your registration has been completed.</p>
           <motion.button
             onClick={closeAgentSignUpModal}
             whileHover={{ scale: 1.1 }}
