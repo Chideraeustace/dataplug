@@ -10,6 +10,9 @@ const auth = admin.auth();
 exports.initiateThetellerPayment = onCall(
   {timeoutSeconds: 120},
   async ({data, context}) => {
+    // Log the full received payload for debugging
+    logger.info("Received payload:", data);
+
     const {
       merchant_id,
       transaction_id,
@@ -18,11 +21,14 @@ exports.initiateThetellerPayment = onCall(
       subscriber_number,
       r_switch,
       email,
-      isCallback = false,
+      status,
+      code,
+      reason,
       isAgentSignup = false,
     } = data;
 
-    const processing_code = "000200";
+    // Determine if this is a callback based on the presence of status and transaction_id
+    const isCallback = status && transaction_id;
 
     // *** INITIATION (NO REDIRECT) ***
     if (!isCallback) {
@@ -60,7 +66,10 @@ exports.initiateThetellerPayment = onCall(
 
       // Validation
       if (!merchant_id || typeof merchant_id !== "string") {
-        throw new HttpsError("invalid-argument", "Merchant ID required");
+        throw new HttpsError(
+          "invalid-argument",
+          `Merchant ID required, received: ${JSON.stringify(merchant_id)}`
+        );
       }
       if (!transaction_id || !/^\d{12}$/.test(transaction_id)) {
         throw new HttpsError(
@@ -92,7 +101,7 @@ exports.initiateThetellerPayment = onCall(
 
       const requestBody = {
         amount: formattedAmount,
-        processing_code,
+        processing_code: "000200",
         transaction_id,
         desc,
         merchant_id,
@@ -107,11 +116,20 @@ exports.initiateThetellerPayment = onCall(
           {
             headers: {
               "Content-Type": "application/json",
-              Authorization: "Basic eXVzc2lmNjcwZDM4M2NhZjU0NDpaV0kxWWpOallURmhOMk5qTTJFME5HRmpPVFJtWWpreU5UZzNaVGxtTjJNPQ==",
+              Authorization:
+                "Basic eXVzc2lmNjcwZDM4M2NhZjU0NDpaV0kxWWpOallURmhOMk5qTTJFME5HRmpPVFJtWWpreU5UZzNaVGxtTjJNPQ==",
               "Cache-Control": "no-cache",
             },
           }
         );
+
+        // Log the full Theteller response (sanitized)
+        logger.info("Theteller full response:", {
+          status: response.data.status,
+          code: response.data.code,
+          reason: response.data.reason,
+          transaction_id: response.data.transaction_id,
+        });
 
         const responseData = response.data;
 
@@ -171,12 +189,38 @@ exports.initiateThetellerPayment = onCall(
         );
       }
     } else {
+      // Log the full callback payload with specific fields
+      logger.info("Theteller callback full response:", {
+        receivedData: data,
+        isDataEmpty: !data,
+        status: status || "missing",
+        code: code || "missing",
+        reason: reason || "missing",
+        transaction_id: transaction_id || "missing",
+      });
+
       try {
+        // Validate callback payload
+        if (!transaction_id || !status) {
+          logger.error("Invalid callback payload:", {
+            transaction_id,
+            status,
+          });
+          return {
+            status: "error",
+            message:
+              "Invalid callback payload: missing transaction_id or status",
+          };
+        }
+
         const doc = await db
           .collection("theteller-transactions")
           .doc(transaction_id)
           .get();
         if (!doc.exists) {
+          logger.error("Transaction not found in Firestore:", {
+            transaction_id,
+          });
           return {status: "error", message: "Transaction not found"};
         }
 
@@ -187,17 +231,17 @@ exports.initiateThetellerPayment = onCall(
           .collection("theteller-transactions")
           .doc(transaction_id)
           .update({
-            status: data.status || "unknown",
-            code: data.code || "999",
-            reason: data.reason || "Callback received",
+            status: status || "unknown",
+            code: code || "999",
+            reason: reason || "Callback received",
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            exported: data.status === "approved" ? false : null,
+            exported: status === "approved" ? false : null,
           });
 
         // *** ACTIVATE AGENT ON SUCCESS ***
         if (
           transaction.isAgentSignup &&
-          data.status === "approved" &&
+          status === "approved" &&
           transaction.agentUid
         ) {
           await db.collection("lords-agents").doc(transaction.agentUid).update({
@@ -206,12 +250,16 @@ exports.initiateThetellerPayment = onCall(
           logger.info(`AGENT ACTIVATED: ${transaction.agentUid}`);
         }
 
-        logger.info(`Transaction CALLBACK: ${transaction_id} - ${data.status}`);
+        logger.info(`Transaction CALLBACK: ${transaction_id} - ${status}`);
+        if (status === "approved") {
+          logger.info(`Transaction APPROVED and updated: ${transaction_id}`);
+        }
+
         return {
           status: "callback_processed",
-          final_status: data.status,
-          final_code: data.code,
-          reason: data.reason,
+          final_status: status,
+          final_code: code,
+          reason: reason,
         };
       } catch (error) {
         logger.error("Callback error:", error);

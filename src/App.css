@@ -23,6 +23,7 @@
 }
 
 body {
+  display: none;
   margin: 0;
   font-family: 'Poppins', sans-serif;
   background: var(--background-color);
