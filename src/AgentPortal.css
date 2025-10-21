@@ -207,6 +207,97 @@
     color: #007bff;
 }
 
+
+/* PIN MODAL STYLES */
+.pin-modal {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    max-width: 400px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.pin-instructions {
+    text-align: left;
+    margin: 1rem 0;
+}
+
+.pin-instructions ol {
+    padding-left: 1.5rem;
+}
+
+.check-btn {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 5px;
+    margin: 1rem 0;
+    cursor: pointer;
+}
+
+.spin {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.timer {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0.5rem 0;
+}
+
+.success-icon,
+.error-icon {
+    margin-bottom: 1rem;
+}
+
+/* DISCOUNT BADGE */
+.discount-badge {
+    background: #28a745;
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+/* MODAL CONTENT */
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 10px;
+    max-width: 400px;
+    margin: 2rem auto;
+}
+
+.simple-form .form-group {
+    margin-bottom: 1rem;
+}
+
+.error-message {
+    color: #dc3545;
+    background: #f8d7da;
+    padding: 0.5rem;
+    border-radius: 5px;
+}
+
+.success-message {
+    color: #155724;
+    background: #d4edda;
+    padding: 0.5rem;
+    border-radius: 5px;
+}
 /* Tablet (max-width: 768px) */
 @media (max-width: 768px) {
     .agent-portal {

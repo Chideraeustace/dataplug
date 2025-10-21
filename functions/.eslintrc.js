@@ -9,10 +9,11 @@ module.exports = {
   extends: ["eslint:recommended", "google"],
   rules: {
     "max-len": "off",
-    "camelcase": "off",
-    "quotes": "off",
-    "indent": "off",
+    camelcase: "off",
+    quotes: "off",
+    indent: "off",
     "comma-dangle": "off",
+    "quote-props": ["error", "as-needed"],
   },
   overrides: [
     {

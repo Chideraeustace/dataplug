@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -8,7 +8,9 @@ import {
   FaShoppingCart,
   FaSearch,
   FaUserEdit,
-  FaMobileAlt,
+  FaCheckCircle,
+  FaSpinner,
+  FaTimesCircle,
 } from "react-icons/fa";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import {
@@ -28,94 +30,65 @@ import "./AgentPortal.css";
 
 Modal.setAppElement("#root");
 
-const AGENT_USSD_CODE = "*920*177#";
-
 const THETELLER_CONFIG = {
   merchantId: "TTM-00009769",
-  currency: "GHS",
-  paymentMethod: "both",
-  redirectUrl: window.location.href,
-  payButtonText: "Pay Securely with TheTeller",
-  customDescription: "Payment for Data Bundle via Lord's Data (Agent)",
 };
 
 const STATIC_CUSTOMER_EMAIL = "customeremail@gmail.com";
 
-const DISCOUNT_PERCENTAGE = 0.1; // 10% discount for agents
+const PROVIDER_R_SWITCH_MAP = {
+  mtn: "MTN",
+  airtel: "ATL",
+  telecel: "VDF",
+};
 
 const publicProvidersData = {
   airtel: [
-    { gb: 1, price: 5.0 },
+    { gb: 1, price: 4.0 },
     { gb: 2, price: 9.0 },
-    { gb: 3, price: 14.0 },
-    { gb: 4, price: 19.0 },
-    { gb: 5, price: 25.0 },
-    { gb: 6, price: 30.0 },
-    { gb: 7, price: 35.0 },
-    { gb: 8, price: 44.0 },
-    { gb: 10, price: 50.0 },
-    { gb: 12, price: 60.0 },
-    { gb: 15, price: 58.0 },
-    { gb: 20, price: 85.0 },
-    { gb: 25, price: 100.0 },
-    { gb: 30, price: 130.0 },
-    { gb: 40, price: 180.0 },
-    { gb: 50, price: 235.0 },
-    { gb: 100, price: 450.0 },
+    { gb: 3, price: 13.0 },
+    { gb: 4, price: 18.0 },
+    { gb: 5, price: 23.0 },
+    { gb: 6, price: 27.0 },
+    { gb: 7, price: 30.0 },
+    { gb: 8, price: 35.0 },
+    { gb: 10, price: 41.0 },
+    { gb: 12, price: 47.0 },
+    { gb: 15, price: 57.0 },
+    { gb: 20, price: 72.0 },
+    { gb: 25, price: 88.0 },
+    { gb: 30, price: 102.0 },
+    { gb: 40, price: 138.0 },
+    { gb: 50, price: 172.0 },
+    { gb: 100, price: 322.0 },
   ],
   telecel: [
-    { gb: 1, price: 5.0 },
-    { gb: 2, price: 9.0 },
-    { gb: 3, price: 14.0 },
-    { gb: 4, price: 19.0 },
-    { gb: 5, price: 25.0 },
-    { gb: 6, price: 30.0 },
-    { gb: 7, price: 35.0 },
-    { gb: 8, price: 44.0 },
-    { gb: 10, price: 50.0 },
-    { gb: 12, price: 60.0 },
-    { gb: 15, price: 58.0 },
-    { gb: 20, price: 85.0 },
-    { gb: 25, price: 100.0 },
-    { gb: 30, price: 130.0 },
-    { gb: 40, price: 180.0 },
-    { gb: 50, price: 235.0 },
-    { gb: 100, price: 450.0 },
+    { gb: 5, price: 25.5 },
+    { gb: 10, price: 43.5 },
+    { gb: 15, price: 66.0 },
+    { gb: 20, price: 83.0 },
+    { gb: 25, price: 113.0 },
+    { gb: 30, price: 131.0 },
+    { gb: 40, price: 168.0 },
+    { gb: 50, price: 220.0 },
   ],
   mtn: [
-    { gb: 1, price: 6.0 },
-    { gb: 2, price: 12.0 },
-    { gb: 3, price: 16.5 },
-    { gb: 4, price: 23.0 },
-    { gb: 5, price: 28.0 },
-    { gb: 6, price: 35.0 },
-    { gb: 8, price: 43.0 },
-    { gb: 10, price: 52.0 },
-    { gb: 15, price: 75.0 },
-    { gb: 20, price: 88.0 },
-    { gb: 25, price: 115.0 },
-    { gb: 30, price: 140.0 },
-    { gb: 40, price: 180.0 },
-    { gb: 50, price: 215.0 },
-    { gb: 100, price: 410.0 },
+    { gb: 1, price: 5.0 },
+    { gb: 2, price: 10.0 },
+    { gb: 3, price: 15.5 },
+    { gb: 4, price: 22.0 },
+    { gb: 5, price: 26.5 },
+    { gb: 6, price: 33.5 },
+    { gb: 8, price: 41.5 },
+    { gb: 10, price: 51.0 },
+    { gb: 15, price: 74.0 },
+    { gb: 20, price: 92.0 },
+    { gb: 25, price: 113.0 },
+    { gb: 30, price: 139.0 },
+    { gb: 40, price: 178.0 },
+    { gb: 50, price: 218.0 },
+    { gb: 100, price: 428.0 },
   ],
-};
-
-// Calculate agent prices with discount
-const agentProvidersData = Object.fromEntries(
-  Object.entries(publicProvidersData).map(([provider, bundles]) => [
-    provider,
-    bundles.map((bundle) => ({
-      gb: bundle.gb,
-      price: bundle.price * (1 - DISCOUNT_PERCENTAGE),
-    })),
-  ])
-);
-
-const generateTransactionId = () => {
-  const array = new Uint32Array(1);
-  crypto.getRandomValues(array);
-  return array[0].toString().padStart(12, "0").slice(0, 12);
 };
 
 function AgentPortal() {
@@ -138,14 +111,57 @@ function AgentPortal() {
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
   const [modalIsOpen, setModalIsOpen] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState("pending_pin");
+  const [initiateThetellerPayment] = useState(
+    httpsCallable(functions, "initiateThetellerPayment")
+  );
+
+  const checkPaymentStatus = useCallback(async () => {
+    if (!purchaseDetails?.transid) return;
+
+    try {
+      const result = await initiateThetellerPayment({
+        transaction_id: purchaseDetails.transid,
+        isCallback: true,
+      });
+
+      if (result.data.final_status === "approved") {
+        setPaymentStatus("approved");
+        await storePurchase();
+      } else if (result.data.final_status === "declined") {
+        setPaymentStatus("declined");
+      }
+    } catch (error) {
+      console.log("Status check in progress...");
+    }
+  }, [purchaseDetails, initiateThetellerPayment]);
 
   const getSelectedBundle = useMemo(() => {
-    const providerBundles = agentProvidersData[selectedProvider];
-    return providerBundles.find(
+    const providerBundles = publicProvidersData[selectedProvider];
+    return providerBundles?.find(
       (bundle) => bundle.gb === Number(selectedBundleSize)
     );
   }, [selectedProvider, selectedBundleSize]);
 
+  const getRSwitch = useMemo(
+    () => PROVIDER_R_SWITCH_MAP[selectedProvider],
+    [selectedProvider]
+  );
+
+  const generateTransactionId = useCallback(() => {
+    const array = new Uint32Array(1);
+    crypto.getRandomValues(array);
+    return array[0].toString().padStart(12, "0").slice(0, 12);
+  }, []);
+
+  const formatPhoneNumber = useCallback((phone) => {
+    if (phone.startsWith("0") && phone.length === 10)
+      return `233${phone.slice(1)}`;
+    if (phone.startsWith("233") && phone.length === 13) return phone;
+    return `233${phone}`;
+  }, []);
+
+  // Auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -156,137 +172,49 @@ function AgentPortal() {
         navigate("/");
       }
     });
-
     return () => unsubscribe();
   }, [navigate]);
 
+  // Reset bundle size when provider changes
   useEffect(() => {
     setSelectedBundleSize(
-      agentProvidersData[selectedProvider][0]?.gb.toString() || ""
+      publicProvidersData[selectedProvider][0]?.gb.toString() || "1"
     );
   }, [selectedProvider]);
 
+  // Auto-poll payment status
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const status = urlParams.get("status");
-    const code = urlParams.get("code");
-    const transid = urlParams.get("transaction_id");
-    const r_switch = urlParams.get("r_switch");
-    const amount = urlParams.get("amount");
-    const subscriber_number = urlParams.get("subscriber_number");
-
-    if (!transid || !purchaseDetails) {
-      if (transid) {
-        console.warn("Missing purchaseDetails for transaction:", {
-          transid,
-          status,
-          code,
-        });
-        alert("Purchase session expired. Please try the purchase again.");
-        setPurchaseDetails(null);
-        localStorage.removeItem("purchaseDetails");
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname
-        );
-      }
-      return;
+    let interval;
+    if (paymentStatus === "pending_pin" && purchaseDetails) {
+      interval = setInterval(checkPaymentStatus, 5000);
     }
+    return () => interval && clearInterval(interval);
+  }, [paymentStatus, purchaseDetails, checkPaymentStatus]);
 
-    if (purchaseDetails.transid !== transid) {
-      console.warn("Transaction ID mismatch:", {
-        urlTransId: transid,
-        purchaseDetails,
-        status,
-        code,
-        amount,
-        subscriber_number,
-        r_switch,
+  // Store purchase in Firestore
+  const storePurchase = async () => {
+    try {
+      await addDoc(collection(db, "teller_response"), {
+        ...purchaseDetails,
+        email: STATIC_CUSTOMER_EMAIL,
+        purchasedAt: new Date(),
+        userId: currentUser.uid,
+        exported: false,
+        subscriber_number: formatPhoneNumber(purchaseDetails.number),
+        r_switch: getRSwitch,
+        amount: purchaseDetails.price,
+        status: "approved",
+        code: "000",
+        desc: `${purchaseDetails.gb}GB ${purchaseDetails.provider} Data Bundle`,
       });
-      alert("Transaction ID mismatch. Please try the purchase again.");
-      setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
 
-    const expectedSubscriberNumber = purchaseDetails.number.startsWith("0")
-      ? `233${purchaseDetails.number.slice(1)}`
-      : `233${purchaseDetails.number}`;
-    if (subscriber_number && subscriber_number !== expectedSubscriberNumber) {
-      console.warn("Subscriber number mismatch:", {
-        expected: expectedSubscriberNumber,
-        received: subscriber_number,
-        transid,
-        purchaseDetails,
-      });
-      alert(
-        "Invalid phone number returned. Please try the purchase again or contact support at 0245687544."
-      );
-      setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
+      // Refresh transactions
+      fetchAgentTransactions(currentUser.uid);
+    } catch (error) {
+      console.error("Error storing purchase:", error);
+      alert("Failed to store purchase. Contact support.");
     }
-
-    const storePurchase = async (isDeclined = false) => {
-      try {
-        await addDoc(collection(db, "teller_response"), {
-          ...purchaseDetails,
-          email: STATIC_CUSTOMER_EMAIL,
-          purchasedAt: new Date(),
-          userId: currentUser ? currentUser.uid : null,
-          exported: false,
-          subscriber_number: expectedSubscriberNumber,
-          r_switch: r_switch || purchaseDetails.provider,
-          amount: parseFloat(amount || purchaseDetails.price).toFixed(2),
-          status: isDeclined ? status : "approved",
-          code: code || (isDeclined ? "020" : "000"),
-        });
-        console.log(
-          `Purchase ${
-            isDeclined ? "declined" : "stored"
-          } in Firestore with transaction ID:`,
-          transid
-        );
-        if (!isDeclined) {
-          setModalIsOpen(true);
-        }
-      } catch (error) {
-        console.error("Error storing purchase:", error);
-        alert(
-          "Failed to store purchase. Please contact support at 0245687544."
-        );
-      } finally {
-        setPurchaseDetails(null);
-        localStorage.removeItem("purchaseDetails");
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname
-        );
-      }
-    };
-
-    if (status === "approved" && code === "000") {
-      storePurchase(false);
-    } else if (status && transid) {
-      console.warn("Transaction declined or failed:", {
-        urlTransId: transid,
-        purchaseDetails,
-        status,
-        code,
-        amount,
-        subscriber_number,
-        r_switch,
-      });
-      alert(
-        `Payment declined (Code: ${code}). Please check your payment method and try again or contact support at 0245687544.`
-      );
-      storePurchase(true);
-    }
-  }, [purchaseDetails, currentUser]);
+  };
 
   const fetchAgentTransactions = async (userId) => {
     try {
@@ -303,7 +231,6 @@ function AgentPortal() {
       setTransactions(transactionsData);
     } catch (error) {
       console.error("Error fetching transactions:", error);
-      alert("Failed to load transactions. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -311,18 +238,15 @@ function AgentPortal() {
 
   const fetchAgentProfile = async (userId) => {
     try {
-      const agentDoc = await getDoc(doc(db, "lord's-agents", userId));
+      const agentDoc = await getDoc(doc(db, "lords-agents", userId));
       if (agentDoc.exists()) {
         const data = agentDoc.data();
         setAgentFullName(data.fullName);
         setAgentPhone(data.phone);
         setAgentUsername(data.username);
-      } else {
-        alert("Agent profile not found.");
       }
     } catch (error) {
       console.error("Error fetching agent profile:", error);
-      alert("Failed to load profile. Please try again.");
     }
   };
 
@@ -339,8 +263,7 @@ function AgentPortal() {
     }
 
     try {
-      const agentDocRef = doc(db, "lord's-agents", currentUser.uid);
-      await updateDoc(agentDocRef, {
+      await updateDoc(doc(db, "lords-agents", currentUser.uid), {
         fullName: agentFullName,
         phone: agentPhone,
         username: agentUsername,
@@ -352,8 +275,7 @@ function AgentPortal() {
         setProfileSuccess("");
       }, 2000);
     } catch (error) {
-      console.error("Error updating profile:", error);
-      setProfileError("Failed to update profile. Please try again.");
+      setProfileError("Failed to update profile.");
     }
   };
 
@@ -361,132 +283,55 @@ function AgentPortal() {
     try {
       await signOut(auth);
       navigate("/");
-      alert("Successfully signed out.");
     } catch (error) {
       console.error("Sign out error:", error);
-      alert("Failed to sign out. Please try again.");
     }
   };
 
-  const closeCheckDataModal = () => {
-    setCheckDataModalOpen(false);
-    setDataPhoneNumber("");
-  };
-
-  const handleCheckData = async (e) => {
-    e.preventDefault();
-    if (dataPhoneNumber.length !== 10 || !/^\d{10}$/.test(dataPhoneNumber)) {
-      alert("Please enter a valid 10-digit phone number (e.g., 0549856098).");
-      return;
-    }
-
-    let formattedPhoneNumber;
-    if (dataPhoneNumber.startsWith("0")) {
-      formattedPhoneNumber = `233${dataPhoneNumber.slice(1)}`;
-    } else {
-      formattedPhoneNumber = `233${dataPhoneNumber}`;
-    }
-
-    try {
-      const q = query(
-        collection(db, "teller_response"),
-        where("subscriber_number", "==", formattedPhoneNumber)
-      );
-
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) {
-        alert(`No data bundle found for ${dataPhoneNumber}.`);
-        closeCheckDataModal();
-        return;
-      }
-
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-
-      if (data.exported === true) {
-        alert(
-          `Data bundle for ${dataPhoneNumber} has been processed!\nDescription: ${
-            data.desc || "N/A"
-          }\nProvider: ${data.r_switch || "N/A"}\nGB: ${
-            data.desc?.match(/(\d+)GB/)?.[1] || "N/A"
-          }`
-        );
-      } else {
-        alert(
-          `Data bundle for ${dataPhoneNumber} is pending processing.\nTransaction ID: ${
-            data.transid || "N/A"
-          }\nStatus: ${data.status || "Pending"}\nCreated: ${
-            data.purchasedAt?.toDate?.()?.toLocaleString() || "N/A"
-          }`
-        );
-      }
-    } catch (error) {
-      console.error("Error checking data status:", error);
-      alert("Error checking data status. Please try again.");
-    }
-
-    closeCheckDataModal();
-  };
-
+  // *** AGENT PURCHASE - NO REDIRECT ***
   const handlePurchase = async (e) => {
     e.preventDefault();
 
-    const finalBundle = getSelectedBundle;
-
-    if (!finalBundle) {
-      console.error("Invalid bundle selected");
-      alert("Please select a valid bundle.");
-      return;
-    }
-
-    if (recipientPhoneNumber.length !== 10) {
-      console.error("Invalid phone number:", recipientPhoneNumber);
-      alert("Please enter a valid 10-digit phone number.");
-      return;
-    }
-
-    if (isPaymentLoading) {
-      console.warn("Payment already in progress");
+    if (!getSelectedBundle || recipientPhoneNumber.length !== 10) {
+      alert("Please complete all fields.");
       return;
     }
 
     setIsPaymentLoading(true);
     const transactionId = generateTransactionId();
+    const amountInPesewas = (getSelectedBundle.price * 100).toFixed(0);
+
     const newPurchaseDetails = {
       provider: selectedProvider.toUpperCase(),
-      gb: finalBundle.gb,
-      price: finalBundle.price,
+      gb: getSelectedBundle.gb,
+      price: getSelectedBundle.price,
       number: recipientPhoneNumber,
       transid: transactionId,
     };
+
     setPurchaseDetails(newPurchaseDetails);
+    setPaymentStatus("pending_pin");
+    setModalIsOpen(true);
 
     try {
-      const initiateThetellerPayment = httpsCallable(
-        functions,
-        "initiateThetellerPayment"
-      );
-      const amountInPesewas = (finalBundle.price * 100).toFixed(0);
-      const result = await initiateThetellerPayment({
+      await initiateThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
-        desc: `${THETELLER_CONFIG.customDescription} - ${
-          finalBundle.gb
-        }GB ${selectedProvider.toUpperCase()}`,
+        desc: `${
+          getSelectedBundle.gb
+        }GB ${selectedProvider.toUpperCase()} Data Bundle`,
         amount: amountInPesewas,
-        redirect_url: THETELLER_CONFIG.redirectUrl,
+        subscriber_number: formatPhoneNumber(recipientPhoneNumber),
+        r_switch: getRSwitch,
         email: STATIC_CUSTOMER_EMAIL,
-        subscriber_number: recipientPhoneNumber.startsWith("0")
-          ? `233${recipientPhoneNumber.slice(1)}`
-          : `233${recipientPhoneNumber}`,
+        isAgentSignup: false,
       });
-      const { checkout_url } = result.data;
-      window.location.href = checkout_url;
+
+      alert(`📱 Check your phone ${recipientPhoneNumber} for PIN prompt!`);
     } catch (error) {
-      console.error("Error initiating purchase payment:", error);
-      alert(`Payment initiation failed: ${error.message}`);
+      alert(`Payment failed: ${error.message}`);
       setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
+      setModalIsOpen(false);
     } finally {
       setIsPaymentLoading(false);
     }
@@ -495,7 +340,15 @@ function AgentPortal() {
   const closeModal = () => {
     setModalIsOpen(false);
     setPurchaseDetails(null);
-    localStorage.removeItem("purchaseDetails");
+    setPaymentStatus("pending_pin");
+    setRecipientPhoneNumber("");
+    setSelectedProvider("airtel");
+    setSelectedBundleSize("1");
+  };
+
+  const closeCheckDataModal = () => {
+    setCheckDataModalOpen(false);
+    setDataPhoneNumber("");
   };
 
   const closeProfileModal = () => {
@@ -504,20 +357,77 @@ function AgentPortal() {
     setProfileSuccess("");
   };
 
+  const handleCheckData = async (e) => {
+    e.preventDefault();
+    if (dataPhoneNumber.length !== 10 || !/^\d{10}$/.test(dataPhoneNumber)) {
+      alert("Please enter a valid 10-digit phone number.");
+      return;
+    }
+
+    const formattedPhone = formatPhoneNumber(dataPhoneNumber);
+    try {
+      let q = query(
+        collection(db, "teller_response"),
+        where("subscriber_number", "==", formattedPhone)
+      );
+      let snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        q = query(
+          collection(db, "theteller-transactions"),
+          where("subscriber_number", "==", formattedPhone)
+        );
+        snapshot = await getDocs(q);
+      }
+
+      if (snapshot.empty) {
+        alert(`No data bundle found for ${dataPhoneNumber}`);
+        closeCheckDataModal();
+        return;
+      }
+
+      const data = snapshot.docs[0].data();
+      let message = "";
+
+      switch (data.status) {
+        case "pending_pin":
+          message = `⏳ Enter PIN on ${dataPhoneNumber} to complete payment!`;
+          break;
+        case "approved":
+          message = data.exported
+            ? `✅ Data ACTIVATED! ${data.desc}`
+            : `✅ Payment approved! ⏳ Data processing...`;
+          break;
+        case "declined":
+          message = `❌ Payment declined: ${data.reason || "Unknown reason"}`;
+          break;
+        default:
+          message = `Status: ${data.status}`;
+      }
+
+      alert(message);
+    } catch (error) {
+      alert("Error checking status.");
+    }
+    closeCheckDataModal();
+  };
+
+  // JSX
   return (
     <div className="agent-portal">
       <motion.header
         className="agent-header"
         initial={{ opacity: 0, y: -50 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
       >
         <div className="title-with-icon">
           <FaUserShield className="agent-icon" />
           <h1>Agent Portal - Lord's Data</h1>
         </div>
         {currentUser && (
-          <p className="welcome-message">Welcome, {currentUser.email}</p>
+          <p className="welcome-message">
+            Welcome, {currentUser.email}
+          </p>
         )}
       </motion.header>
 
@@ -525,7 +435,6 @@ function AgentPortal() {
         className="agent-nav"
         initial={{ opacity: 0, x: -50 }}
         animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
       >
         <button
           className={`nav-button ${activeTab === "history" ? "active" : ""}`}
@@ -540,13 +449,13 @@ function AgentPortal() {
           <FaShoppingCart /> Purchase Bundles
         </button>
         <button
-          className={`nav-button ${activeTab === "check-data" ? "active" : ""}`}
+          className={`nav-button`}
           onClick={() => setCheckDataModalOpen(true)}
         >
           <FaSearch /> Check Data Status
         </button>
         <button
-          className={`nav-button ${activeTab === "profile" ? "active" : ""}`}
+          className={`nav-button`}
           onClick={() => setProfileModalOpen(true)}
         >
           <FaUserEdit /> Edit Profile
@@ -560,7 +469,6 @@ function AgentPortal() {
         className="agent-content"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
       >
         {activeTab === "history" && (
           <>
@@ -575,12 +483,11 @@ function AgentPortal() {
                     className="transaction-card"
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3 }}
                   >
                     <FaHistory className="transaction-icon" />
                     <div className="transaction-details">
                       <p>
-                        <strong>Transaction ID:</strong> {transaction.transid}
+                        <strong>ID:</strong> {transaction.transid}
                       </p>
                       <p>
                         <strong>Provider:</strong> {transaction.provider}
@@ -589,22 +496,19 @@ function AgentPortal() {
                         <strong>Bundle:</strong> {transaction.gb} GB
                       </p>
                       <p>
-                        <strong>Amount:</strong> GHS {transaction.amount}
+                        <strong>Amount:</strong> GHS{" "}
+                        {transaction.amount?.toFixed(2)}
                       </p>
                       <p>
                         <strong>Phone:</strong> {transaction.subscriber_number}
                       </p>
                       <p>
                         <strong>Status:</strong>{" "}
-                        {transaction.exported
-                          ? "Processed"
-                          : transaction.status || "Pending"}
+                        {transaction.exported ? "✅ Processed" : "⏳ Pending"}
                       </p>
                       <p>
                         <strong>Date:</strong>{" "}
-                        {transaction.purchasedAt
-                          ?.toDate?.()
-                          ?.toLocaleString() || "N/A"}
+                        {transaction.purchasedAt?.toDate()?.toLocaleString()}
                       </p>
                     </div>
                   </motion.div>
@@ -618,17 +522,15 @@ function AgentPortal() {
 
         {activeTab === "purchase" && (
           <>
-            <h2>Purchase Bundles (Agent Discount Applied)</h2>
+            <h2>Purchase Bundles</h2>
             <form onSubmit={handlePurchase} className="purchase-form">
               <div className="form-group">
-                <label htmlFor="network">Network Provider:</label>
+                <label>Network:</label>
                 <select
-                  id="network"
                   value={selectedProvider}
                   onChange={(e) => setSelectedProvider(e.target.value)}
-                  required
                 >
-                  {Object.keys(agentProvidersData).map((provider) => (
+                  {Object.keys(publicProvidersData).map((provider) => (
                     <option key={provider} value={provider}>
                       {provider.toUpperCase()}
                     </option>
@@ -636,134 +538,172 @@ function AgentPortal() {
                 </select>
               </div>
               <div className="form-group">
-                <label htmlFor="bundle">Select Bundle:</label>
+                <label>Bundle:</label>
                 <select
-                  id="bundle"
                   value={selectedBundleSize}
                   onChange={(e) => setSelectedBundleSize(e.target.value)}
-                  required
                 >
-                  {agentProvidersData[selectedProvider]?.map(
-                    (bundle, index) => (
-                      <option key={index} value={bundle.gb}>
-                        {bundle.gb} GB (GHS {bundle.price.toFixed(2)})
-                      </option>
-                    )
-                  )}
+                  {publicProvidersData[selectedProvider]?.map((bundle) => (
+                    <option key={bundle.gb} value={bundle.gb}>
+                      {bundle.gb} GB (GHS {bundle.price.toFixed(2)})
+                    </option>
+                  ))}
                 </select>
               </div>
               <div className="form-group">
-                <label htmlFor="phone">Recipient Phone Number:</label>
+                <label>Phone Number:</label>
                 <input
-                  id="phone"
                   type="tel"
                   value={recipientPhoneNumber}
                   onChange={(e) => setRecipientPhoneNumber(e.target.value)}
-                  required
                   pattern="[0-9]{10}"
-                  placeholder="Enter 10-digit number"
+                  placeholder="0541234567"
+                  required
                 />
               </div>
               <motion.button
                 type="submit"
+                disabled={isPaymentLoading || !getSelectedBundle}
                 className="submit-button"
-                disabled={
-                  !getSelectedBundle ||
-                  recipientPhoneNumber.length !== 10 ||
-                  isPaymentLoading
-                }
                 whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
               >
-                {isPaymentLoading ? "Processing..." : "Proceed to Payment"}
+                {isPaymentLoading
+                  ? "Processing..."
+                  : `Pay GHS ${getSelectedBundle?.price.toFixed(2)}`}
               </motion.button>
             </form>
           </>
         )}
-
-        {activeTab === "ussd" && (
-          <motion.section
-            className="agent-ussd-card"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.4 }}
-          >
-            <div className="agent-ussd-content">
-              <FaMobileAlt size={30} />
-              <div>
-                <h3>Buy via USSD (Agent Code)</h3>
-                <p>
-                  Dial this code to purchase bundles directly from Lord's Data:
-                </p>
-                <span className="ussd-code-display primary-code">
-                  {AGENT_USSD_CODE}
-                </span>
-              </div>
-            </div>
-          </motion.section>
-        )}
       </motion.section>
 
+      {/* PIN MODAL */}
+      <Modal
+        isOpen={modalIsOpen}
+        onRequestClose={closeModal}
+        className="modal"
+        overlayClassName="overlay"
+      >
+        <motion.div
+          className="pin-modal"
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          {paymentStatus === "pending_pin" ? (
+            <>
+              <h2>📱 Enter PIN to Complete Payment</h2>
+              <p>
+                <strong>Sent to:</strong> {purchaseDetails?.number}
+              </p>
+              <div className="pin-instructions">
+                <ol>
+                  <li>Check SMS on your phone</li>
+                  <li>Enter your Mobile Money PIN</li>
+                  <li>Approve payment</li>
+                </ol>
+              </div>
+              <p>
+                <strong>
+                  {purchaseDetails?.gb}GB {purchaseDetails?.provider}
+                </strong>
+              </p>
+              <motion.button
+                onClick={checkPaymentStatus}
+                className="check-btn"
+                whileHover={{ scale: 1.05 }}
+              >
+                <FaSpinner className="spin" /> Checking...
+              </motion.button>
+              <p className="timer">Auto-checking every 5 seconds...</p>
+              <motion.button
+                onClick={closeModal}
+                className="close-modal-button secondary"
+                whileHover={{ scale: 1.05 }}
+              >
+                Cancel
+              </motion.button>
+            </>
+          ) : paymentStatus === "approved" ? (
+            <>
+              <FaCheckCircle size={50} className="success-icon" />
+              <h2>🎉 Purchase Successful!</h2>
+              <p>
+                {purchaseDetails?.gb}GB bundle purchased for GHS{" "}
+                {purchaseDetails?.price.toFixed(2)}!
+              </p>
+              <p>Data will be credited to {purchaseDetails?.number} shortly.</p>
+              <motion.button
+                onClick={closeModal}
+                className="close-modal-button"
+                whileHover={{ scale: 1.05 }}
+              >
+                Close
+              </motion.button>
+            </>
+          ) : (
+            <>
+              <FaTimesCircle size={50} className="error-icon" />
+              <h2>❌ Payment Declined</h2>
+              <p>Please try again.</p>
+              <motion.button
+                onClick={closeModal}
+                className="close-modal-button"
+                whileHover={{ scale: 1.05 }}
+              >
+                Close
+              </motion.button>
+            </>
+          )}
+        </motion.div>
+      </Modal>
+
+      {/* CHECK DATA MODAL */}
       <Modal
         isOpen={checkDataModalOpen}
         onRequestClose={closeCheckDataModal}
         className="modal"
         overlayClassName="overlay"
       >
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="modal-content"
-        >
+        <div className="modal-content">
           <h2>
             <FaSearch /> Check Data Status
           </h2>
-          <form onSubmit={handleCheckData} className="simple-form">
+          <form onSubmit={handleCheckData}>
             <div className="form-group">
-              <label htmlFor="data-phone">Phone Number:</label>
               <input
-                id="data-phone"
                 type="tel"
                 value={dataPhoneNumber}
                 onChange={(e) => setDataPhoneNumber(e.target.value)}
-                required
+                placeholder="0541234567"
                 pattern="[0-9]{10}"
-                placeholder="Enter 10-digit number"
+                required
               />
             </div>
             <motion.button
               type="submit"
               className="submit-button"
               whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
             >
-              Check Status
+              Check
             </motion.button>
           </form>
           <motion.button
             onClick={closeCheckDataModal}
             className="close-modal-button secondary"
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
           >
             Cancel
           </motion.button>
-        </motion.div>
+        </div>
       </Modal>
 
+      {/* PROFILE MODAL */}
       <Modal
         isOpen={profileModalOpen}
         onRequestClose={closeProfileModal}
         className="modal"
         overlayClassName="overlay"
       >
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="modal-content"
-        >
+        <div className="modal-content">
           <h2>
             <FaUserEdit /> Edit Profile
           </h2>
@@ -773,44 +713,37 @@ function AgentPortal() {
           )}
           <form onSubmit={handleUpdateProfile} className="simple-form">
             <div className="form-group">
-              <label htmlFor="full-name">Full Name:</label>
+              <label>Full Name:</label>
               <input
-                id="full-name"
                 type="text"
                 value={agentFullName}
                 onChange={(e) => setAgentFullName(e.target.value)}
                 required
-                placeholder="Enter your full name"
               />
             </div>
             <div className="form-group">
-              <label htmlFor="phone">Phone Number:</label>
+              <label>Phone Number:</label>
               <input
-                id="phone"
                 type="tel"
                 value={agentPhone}
                 onChange={(e) => setAgentPhone(e.target.value)}
-                required
                 pattern="[0-9]{10}"
-                placeholder="Enter 10-digit number"
+                required
               />
             </div>
             <div className="form-group">
-              <label htmlFor="username">Username:</label>
+              <label>Username:</label>
               <input
-                id="username"
                 type="text"
                 value={agentUsername}
                 onChange={(e) => setAgentUsername(e.target.value)}
                 required
-                placeholder="Enter your username"
               />
             </div>
             <motion.button
               type="submit"
               className="submit-button"
               whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
             >
               Update Profile
             </motion.button>
@@ -819,41 +752,10 @@ function AgentPortal() {
             onClick={closeProfileModal}
             className="close-modal-button secondary"
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
           >
             Cancel
           </motion.button>
-        </motion.div>
-      </Modal>
-
-      <Modal
-        isOpen={modalIsOpen}
-        onRequestClose={closeModal}
-        className="modal"
-        overlayClassName="overlay"
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="success-message"
-        >
-          <h2>🎉 Purchase Successful! 🎉</h2>
-          <p>
-            You have successfully purchased a {purchaseDetails?.gb} GB bundle
-            from {purchaseDetails?.provider} for GHS{" "}
-            {purchaseDetails?.price.toFixed(2)}.
-          </p>
-          <p>The bundle has been credited to {purchaseDetails?.number}.</p>
-          <motion.button
-            onClick={closeModal}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            className="close-modal-button"
-          >
-            Close
-          </motion.button>
-        </motion.div>
+        </div>
       </Modal>
     </div>
   );

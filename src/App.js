@@ -1,46 +1,38 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Modal from "react-modal";
-import { FaWhatsapp, FaWifi, FaSearch, FaUserShield } from "react-icons/fa";
 import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signInWithRedirect,
-  getRedirectResult,
-  onAuthStateChanged,
-  GoogleAuthProvider,
-  sendEmailVerification,
-} from "firebase/auth";
-import {
-  doc,
-  setDoc,
-  collection,
-  addDoc,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
+  FaWhatsapp,
+  FaWifi,
+  FaSearch,
+  FaUserShield,
+  FaCheckCircle,
+  FaSpinner,
+  FaTimesCircle,
+} from "react-icons/fa";
+import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
+import { collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db, auth, functions } from "./Firebase";
 import { httpsCallable } from "firebase/functions";
 import "./App.css";
-import mtn from "./download.png"
-import airtel from "./airtel.png"
-import telecel from "./telecel.png"
-
+import mtn from "./download.png";
+import airtel from "./airtel.png";
+import telecel from "./telecel.png";
 
 Modal.setAppElement("#root");
 
 const THETELLER_CONFIG = {
   merchantId: "TTM-00009769",
-  currency: "GHS",
-  paymentMethod: "both",
-  redirectUrl: window.location.href,
-  payButtonText: "Pay Securely with TheTeller",
-  customDescription: "Payment for Data Bundle via Lord's Data",
 };
 
 const STATIC_CUSTOMER_EMAIL = "customeremail@gmail.com";
+
+const PROVIDER_R_SWITCH_MAP = {
+  mtn: "MTN",
+  airtel: "ATL",
+  telecel: "VDF",
+};
 
 const providersData = {
   airtel: [
@@ -106,10 +98,7 @@ function App() {
   const [selectedBundleSize, setSelectedBundleSize] = useState("1");
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
   const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [purchaseDetails, setPurchaseDetails] = useState(() => {
-    const saved = localStorage.getItem("purchaseDetails");
-    return saved ? JSON.parse(saved) : null;
-  });
+  const [purchaseDetails, setPurchaseDetails] = useState(null);
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [checkDataModalOpen, setCheckDataModalOpen] = useState(false);
   const [agentPortalModalOpen, setAgentPortalModalOpen] = useState(false);
@@ -122,197 +111,175 @@ function App() {
   const [agentSignUpEmail, setAgentSignUpEmail] = useState("");
   const [signUpUsername, setSignUpUsername] = useState("");
   const [signUpPassword, setSignUpPassword] = useState("");
-  const [agentSignUpDetails, setAgentSignUpDetails] = useState(() => {
-    const saved = localStorage.getItem("agentSignUpDetails");
-    return saved ? JSON.parse(saved) : null;
-  });
-  const [agentSignUpModalOpen, setAgentSignUpModalOpen] = useState(false);
+  const [agentSignUpDetails, setAgentSignUpDetails] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [signupError, setSignupError] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState("pending_pin");
+  const [isAgentSignup, setIsAgentSignup] = useState(false);
 
-  const providerLogos = {
-    mtn: mtn,
-    airtel: airtel,
-    telecel: telecel,
-  };
+  const providerLogos = { mtn, airtel, telecel };
+  const initiateThetellerPayment = httpsCallable(
+    functions,
+    "initiateThetellerPayment"
+  );
+  const formatPhoneNumber = useCallback((phone) => {
+    if (phone.startsWith("0") && phone.length === 10)
+      return `233${phone.slice(1)}`;
+    if (phone.startsWith("233") && phone.length === 13) return phone;
+    return `233${phone}`;
+  }, []);
 
-  const generateTransactionId = () => {
+  // *** NOW SAFE - checkPaymentStatus IS DEFINED ***
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, setCurrentUser);
+    return () => unsubscribe();
+  }, []);
+
+  const getRSwitch = useMemo(
+    () => PROVIDER_R_SWITCH_MAP[selectedProvider],
+    [selectedProvider]
+  );
+  // *** HOISTED - DECLARED BEFORE USEEFFECT ***
+  const checkPaymentStatus = useCallback(async () => {
+    const transactionId =
+      purchaseDetails?.transid || agentSignUpDetails?.transid;
+    if (!transactionId) return;
+
+    try {
+      const result = await initiateThetellerPayment({
+        transaction_id: transactionId,
+        isCallback: true,
+      });
+
+      if (result.data.final_status === "approved") {
+        setPaymentStatus("approved");
+
+        // *** AGENT SIGNUP - AUTO LOGIN AFTER SUCCESS ***
+        if (isAgentSignup && agentSignUpDetails) {
+          try {
+            await signInWithEmailAndPassword(
+              auth,
+              agentSignUpDetails.email,
+              agentSignUpDetails.password
+            );
+            alert(
+              `🎉 Welcome ${agentSignUpDetails.fullName}! Agent account created & logged in!`
+            );
+            closeModal();
+            navigate("/agent-portal");
+            return;
+          } catch (loginError) {
+            alert(`Payment successful! Please login with your credentials.`);
+          }
+        }
+
+        // *** DATA PURCHASE - STORE TRANSACTION ***
+        if (purchaseDetails) {
+          await addDoc(collection(db, "teller_response"), {
+            ...purchaseDetails,
+            email: STATIC_CUSTOMER_EMAIL,
+            createdAt: new Date(),
+            userId: currentUser?.uid,
+            exported: false,
+            subscriber_number: formatPhoneNumber(purchaseDetails.number),
+            r_switch: getRSwitch,
+            amount: purchaseDetails.price,
+            status: "approved",
+            code: "000",
+            desc: `${purchaseDetails.gb}GB ${purchaseDetails.provider} Data Bundle`,
+          });
+        }
+      } else if (result.data.final_status === "declined") {
+        setPaymentStatus("declined");
+      }
+    } catch (error) {
+      console.log("Status check in progress...");
+    }
+  }, [
+    purchaseDetails,
+    agentSignUpDetails,
+    currentUser,
+    formatPhoneNumber,
+    getRSwitch,
+    isAgentSignup,
+    navigate,
+  ]);
+
+  const generateTransactionId = useCallback(() => {
     const array = new Uint32Array(1);
     crypto.getRandomValues(array);
     return array[0].toString().padStart(12, "0").slice(0, 12);
-  };
+  }, []);
 
   const getSelectedBundle = useMemo(() => {
-    const providerBundles = providersData[selectedProvider];
-    return providerBundles.find(
+    return providersData[selectedProvider]?.find(
       (bundle) => bundle.gb === Number(selectedBundleSize)
     );
   }, [selectedProvider, selectedBundleSize]);
 
+  // Auto-poll payment status
   useEffect(() => {
-    const handleAuthError = (error) => {
-      if (error.code === "auth/no-auth-event") {
-        console.warn(
-          "Firebase Auth Event Error: Likely popup/redirect blocked. Try incognito or whitelist domains."
-        );
-        alert(
-          "Auth flow interrupted (e.g., popup blocked). Please retry in an incognito window or check console."
-        );
-      }
+    let interval;
+    if (
+      paymentStatus === "pending_pin" &&
+      (purchaseDetails || agentSignUpDetails)
+    ) {
+      interval = setInterval(checkPaymentStatus, 5000);
+    }
+    return () => interval && clearInterval(interval);
+  }, [paymentStatus, purchaseDetails, agentSignUpDetails, checkPaymentStatus]);
+
+  // *** DATA PURCHASE - NO REDIRECT ***
+  const handlePurchase = async (e) => {
+    e.preventDefault();
+
+    if (!getSelectedBundle || recipientPhoneNumber.length !== 10) {
+      alert("Please complete all fields.");
+      return;
+    }
+
+    setIsPaymentLoading(true);
+    setIsAgentSignup(false);
+    const transactionId = generateTransactionId();
+    const amountInPesewas = (getSelectedBundle.price * 100).toFixed(0);
+
+    const newPurchaseDetails = {
+      provider: selectedProvider.toUpperCase(),
+      gb: getSelectedBundle.gb,
+      price: getSelectedBundle.price,
+      number: recipientPhoneNumber,
+      transid: transactionId,
     };
 
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (user) => {
-        setCurrentUser(user);
-        if (user) {
-          console.log("Auth state changed: User logged in", user.uid);
-        }
-      },
-      handleAuthError
-    );
+    setPurchaseDetails(newPurchaseDetails);
+    setPaymentStatus("pending_pin");
+    setModalIsOpen(true);
 
-    return () => unsubscribe();
-  }, []);
+    try {
+      await initiateThetellerPayment({
+        merchant_id: THETELLER_CONFIG.merchantId,
+        transaction_id: transactionId,
+        desc: `${
+          getSelectedBundle.gb
+        }GB ${selectedProvider.toUpperCase()} Data Bundle`,
+        amount: amountInPesewas,
+        subscriber_number: formatPhoneNumber(recipientPhoneNumber),
+        r_switch: getRSwitch,
+        email: STATIC_CUSTOMER_EMAIL,
+        isAgentSignup: false,
+      });
 
-  useEffect(() => {
-    setSelectedBundleSize(
-      providersData[selectedProvider][0]?.gb.toString() || ""
-    );
-  }, [selectedProvider]);
-
-  useEffect(() => {
-    if (purchaseDetails) {
-      localStorage.setItem("purchaseDetails", JSON.stringify(purchaseDetails));
-    } else {
-      localStorage.removeItem("purchaseDetails");
-    }
-    if (agentSignUpDetails) {
-      localStorage.setItem(
-        "agentSignUpDetails",
-        JSON.stringify(agentSignUpDetails)
-      );
-    } else {
-      localStorage.removeItem("agentSignUpDetails");
-    }
-  }, [purchaseDetails, agentSignUpDetails]);
-
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const transid = urlParams.get("transaction_id");
-    if (transid && (!purchaseDetails || purchaseDetails.transid !== transid)) {
-      console.log("Clearing stale purchaseDetails due to mismatch or absence");
+      alert(`📱 Check your phone ${recipientPhoneNumber} for PIN prompt!`);
+    } catch (error) {
+      alert(`Payment failed: ${error.message}`);
       setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
-    }
-  }, []);
-
-  const closeModal = () => {
-    setModalIsOpen(false);
-    setRecipientPhoneNumber("");
-    setSelectedProvider("airtel");
-    setPurchaseDetails(null);
-    localStorage.removeItem("purchaseDetails");
-  };
-
-  const closeCheckDataModal = () => {
-    setCheckDataModalOpen(false);
-    setDataPhoneNumber("");
-  };
-
-  const closeAgentSignUpModal = () => {
-    setAgentSignUpModalOpen(false);
-    setAgentSignUpDetails(null);
-    localStorage.removeItem("agentSignUpDetails");
-    navigate("/agent-portal");
-  };
-
-  const closeAgentPortalModal = () => {
-    setAgentPortalModalOpen(false);
-    setAgentEmail("");
-    setAgentPassword("");
-    setIsSignUp(false);
-    setSignupError("");
-  };
-
-  const handleCheckData = async (e) => {
-    e.preventDefault();
-    if (dataPhoneNumber.length !== 10 || !/^\d{10}$/.test(dataPhoneNumber)) {
-      alert("Please enter a valid 10-digit phone number (e.g., 0549856098).");
-      return;
-    }
-
-    let formattedPhoneNumber;
-    if (dataPhoneNumber.startsWith("0")) {
-      formattedPhoneNumber = `233${dataPhoneNumber.slice(1)}`;
-    } else {
-      formattedPhoneNumber = `233${dataPhoneNumber}`;
-    }
-
-    try {
-      const q = query(
-        collection(db, "teller_response"),
-        where("subscriber_number", "==", formattedPhoneNumber)
-      );
-
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) {
-        alert(`No data bundle found for ${dataPhoneNumber}.`);
-        closeCheckDataModal();
-        return;
-      }
-
-      const doc = querySnapshot.docs[0];
-      const data = doc.data();
-
-      if (data.exported === true) {
-        alert(
-          `Data bundle for ${dataPhoneNumber} has been processed!\nDescription: ${
-            data.desc || "N/A"
-          }\nProvider: ${data.r_switch || "N/A"}\nGB: ${
-            data.desc?.match(/(\d+)GB/)?.[1] || "N/A"
-          }`
-        );
-      } else {
-        alert(
-          `Data bundle for ${dataPhoneNumber} is pending processing.\nTransaction ID: ${
-            data.transid || "N/A"
-          }\nStatus: ${data.status || "Pending"}\nCreated: ${
-            data.purchasedAt?.toDate?.()?.toLocaleString() || "N/A"
-          }`
-        );
-      }
-    } catch (error) {
-      console.error("Error checking data status:", error);
-      alert("Error checking data status. Please try again.");
-    }
-
-    closeCheckDataModal();
-  };
-
-  const handleAgentLogin = async (e) => {
-    e.preventDefault();
-    if (!agentEmail || !agentPassword) {
-      alert("Please enter email and password.");
-      return;
-    }
-
-    try {
-      await signInWithEmailAndPassword(auth, agentEmail, agentPassword);
-      alert(`Logged in as agent with email ${agentEmail}!`);
-      closeAgentPortalModal();
-      navigate("/agent-portal");
-    } catch (error) {
-      console.error("Login Error:", error);
-      if (error.code === "auth/no-auth-event") {
-        alert("Auth popup blocked. Trying redirect...");
-        await signInWithRedirect(auth, new GoogleAuthProvider());
-      } else {
-        alert(`Login failed: ${error.message}`);
-      }
+      setModalIsOpen(false);
+    } finally {
+      setIsPaymentLoading(false);
     }
   };
 
+  // *** AGENT SIGNUP - PAY FIRST, CREATE ACCOUNT AFTER ***
   const handleAgentSignUpPayment = async (e) => {
     e.preventDefault();
 
@@ -343,311 +310,151 @@ function App() {
 
     setIsPaymentLoading(true);
     setSignupError("");
+    setIsAgentSignup(true);
     const transactionId = generateTransactionId();
-    setAgentSignUpDetails({
+
+    const agentDetails = {
       fullName: agentFullName,
       phone: agentPhone,
       email: agentSignUpEmail,
       username: signUpUsername,
       password: signUpPassword,
       transid: transactionId,
-    });
+    };
+
+    setAgentSignUpDetails(agentDetails);
+    setPaymentStatus("pending_pin");
+    setModalIsOpen(true);
+    setAgentPortalModalOpen(false); // Close signup form
 
     try {
-      const initiateThetellerPayment = httpsCallable(
-        functions,
-        "initiateThetellerPayment"
-      );
       const amountInPesewas = (50.0 * 100).toFixed(0);
-      const result = await initiateThetellerPayment({
+      await initiateThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
-        desc: "Agent Registration Fee - Lord's Data Portal",
+        desc: JSON.stringify(agentDetails),
         amount: amountInPesewas,
-        redirect_url: THETELLER_CONFIG.redirectUrl,
+        subscriber_number: formatPhoneNumber(agentPhone),
         email: STATIC_CUSTOMER_EMAIL,
+        isAgentSignup: true,
       });
-      const { checkout_url } = result.data;
-      window.location.href = checkout_url;
+
+      alert(`📱 Check your phone ${agentPhone} for PIN prompt!`);
     } catch (error) {
-      console.error("Error initiating agent signup payment:", error);
-      setSignupError(`Payment initiation failed: ${error.message}`);
+      setSignupError(`Payment failed: ${error.message}`);
+      setModalIsOpen(false);
     } finally {
       setIsPaymentLoading(false);
     }
   };
 
-  useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log("Redirect auth success:", result.user.uid);
-          navigate("/agent-portal");
-        }
-      } catch (error) {
-        console.error("Redirect result error:", error);
-        setSignupError(`Authentication failed: ${error.message}`);
-      }
-    };
-
-    handleRedirectResult();
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const status = urlParams.get("status");
-    const code = urlParams.get("code");
-    const transid = urlParams.get("transaction_id");
-
-    if (
-      status === "approved" &&
-      code === "000" &&
-      transid &&
-      agentSignUpDetails?.transid === transid
-    ) {
-      const registerAgent = async () => {
-        try {
-          const userCredential = await createUserWithEmailAndPassword(
-            auth,
-            agentSignUpDetails.email,
-            agentSignUpDetails.password
-          );
-          const user = userCredential.user;
-
-          await sendEmailVerification(user);
-
-          await setDoc(doc(db, "lord's-agents", user.uid), {
-            fullName: agentSignUpDetails.fullName,
-            phone: agentSignUpDetails.phone,
-            username: agentSignUpDetails.username,
-            email: agentSignUpDetails.email,
-            registeredAt: new Date(),
-            isActive: false,
-          });
-
-          console.log("Agent registered successfully:", user.uid);
-          setAgentSignUpModalOpen(true);
-        } catch (error) {
-          console.error("Signup Error:", error);
-          if (error.code === "auth/email-already-in-use") {
-            setSignupError("An account with this email already exists.");
-          } else {
-            setSignupError(`Registration failed: ${error.message}`);
-          }
-        }
-      };
-
-      registerAgent();
-      window.history.replaceState({}, document.title, window.location.pathname);
+  const closeModal = () => {
+    setModalIsOpen(false);
+    setPurchaseDetails(null);
+    setAgentSignUpDetails(null);
+    setPaymentStatus("pending_pin");
+    setIsAgentSignup(false);
+    if (!currentUser) {
+      setRecipientPhoneNumber("");
+      setSelectedProvider("airtel");
+      setSelectedBundleSize("1");
     }
-  }, [agentSignUpDetails, navigate]);
+  };
 
-  useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const status = urlParams.get("status");
-    const code = urlParams.get("code");
-    const transid = urlParams.get("transaction_id");
-    const r_switch = urlParams.get("r_switch");
-    const amount = urlParams.get("amount");
-    const subscriber_number = urlParams.get("subscriber_number");
+  const closeCheckDataModal = () => {
+    setCheckDataModalOpen(false);
+    setDataPhoneNumber("");
+  };
 
-    if (!transid || !purchaseDetails) {
-      if (transid) {
-        console.warn("Missing purchaseDetails for transaction:", {
-          transid,
-          status,
-          code,
-        });
-        alert("Purchase session expired. Please try the purchase again.");
-        setPurchaseDetails(null);
-        localStorage.removeItem("purchaseDetails");
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname
-        );
-        return;
-      }
-      return;
-    }
+  const closeAgentPortalModal = () => {
+    setAgentPortalModalOpen(false);
+    setAgentEmail("");
+    setAgentPassword("");
+    setIsSignUp(false);
+    setSignupError("");
+    setAgentFullName("");
+    setAgentPhone("");
+    setAgentSignUpEmail("");
+    setSignUpUsername("");
+    setSignUpPassword("");
+  };
 
-    if (purchaseDetails.transid !== transid) {
-      console.warn("Transaction ID mismatch:", {
-        urlTransId: transid,
-        purchaseDetails,
-        status,
-        code,
-        amount,
-        subscriber_number,
-        r_switch,
-      });
-      alert("Transaction ID mismatch. Please try the purchase again.");
-      setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
-      window.history.replaceState({}, document.title, window.location.pathname);
-      return;
-    }
-
-    let normalizedSubscriberNumber = subscriber_number;
-    if (
-      subscriber_number &&
-      subscriber_number.startsWith("0") &&
-      subscriber_number.length === 10
-    ) {
-      normalizedSubscriberNumber = `233${subscriber_number.slice(1)}`;
-    } else if (subscriber_number && !subscriber_number.startsWith("233")) {
-      console.warn("Unexpected subscriber_number format:", {
-        subscriber_number,
-      });
-    }
-
-    const expectedSubscriberNumber = purchaseDetails.number.startsWith("0")
-      ? `233${purchaseDetails.number.slice(1)}`
-      : `233${purchaseDetails.number}`;
-
-    if (
-      normalizedSubscriberNumber &&
-      normalizedSubscriberNumber !== expectedSubscriberNumber
-    ) {
-      console.warn("Subscriber number mismatch after normalization:", {
-        expected: expectedSubscriberNumber,
-        received: subscriber_number,
-        normalized: normalizedSubscriberNumber,
-        transid,
-        purchaseDetails,
-      });
-    }
-
-    const storePurchase = async (isDeclined = false) => {
-      try {
-        await addDoc(collection(db, "teller_response"), {
-          ...purchaseDetails,
-          email: STATIC_CUSTOMER_EMAIL,
-          createdAt: new Date(),
-          userId: currentUser ? currentUser.uid : null,
-          exported: false,
-          subscriber_number:
-            normalizedSubscriberNumber || expectedSubscriberNumber,
-          r_switch: r_switch || purchaseDetails.provider,
-          amount: parseFloat(amount || purchaseDetails.price).toFixed(2),
-          status: isDeclined ? status : "approved",
-          code: code || (isDeclined ? "020" : "000"),
-        });
-        console.log(
-          `Purchase ${
-            isDeclined ? "declined" : "stored"
-          } in Firestore with transaction ID:`,
-          transid
-        );
-        if (!isDeclined) {
-          setModalIsOpen(true);
-        }
-      } catch (error) {
-        console.error("Error storing purchase:", error);
-        alert(
-          "Failed to store purchase. Please contact support at 0245687544."
-        );
-      } finally {
-        setPurchaseDetails(null);
-        localStorage.removeItem("purchaseDetails");
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname
-        );
-      }
-    };
-
-    if (status === "approved" && code === "000") {
-      storePurchase(false);
-    } else {
-      console.warn("Transaction declined or failed:", {
-        urlTransId: transid,
-        purchaseDetails,
-        status,
-        code,
-        amount,
-        subscriber_number,
-        r_switch,
-      });
-      alert(
-        `Payment declined. Please check your payment method and try again or contact support at 0245687544.`
-      );
-      storePurchase(true);
-    }
-  }, [purchaseDetails, currentUser]);
-
-  const handlePurchase = async (e) => {
+  const handleCheckData = async (e) => {
     e.preventDefault();
-
-    const finalBundle = getSelectedBundle;
-
-    if (!finalBundle) {
-      console.error("Invalid bundle selected");
-      alert("Please select a valid bundle.");
-      return;
-    }
-
-    if (recipientPhoneNumber.length !== 10) {
-      console.error("Invalid phone number:", recipientPhoneNumber);
+    if (dataPhoneNumber.length !== 10 || !/^\d{10}$/.test(dataPhoneNumber)) {
       alert("Please enter a valid 10-digit phone number.");
       return;
     }
 
-    if (isPaymentLoading) {
-      console.warn("Payment already in progress");
-      return;
-    }
-
-    setIsPaymentLoading(true);
-    const transactionId = generateTransactionId();
-    const newPurchaseDetails = {
-      provider: selectedProvider.toUpperCase(),
-      gb: finalBundle.gb,
-      price: finalBundle.price,
-      number: recipientPhoneNumber,
-      transid: transactionId,
-    };
-    setPurchaseDetails(newPurchaseDetails);
-
+    const formattedPhone = formatPhoneNumber(dataPhoneNumber);
     try {
-      const initiateThetellerPayment = httpsCallable(
-        functions,
-        "initiateThetellerPayment"
+      let q = query(
+        collection(db, "teller_response"),
+        where("subscriber_number", "==", formattedPhone)
       );
-      const amountInPesewas = (finalBundle.price * 100).toFixed(0);
-      const result = await initiateThetellerPayment({
-        merchant_id: THETELLER_CONFIG.merchantId,
-        transaction_id: transactionId,
-        desc: `${THETELLER_CONFIG.customDescription} - ${
-          finalBundle.gb
-        }GB ${selectedProvider.toUpperCase()}`,
-        amount: amountInPesewas,
-        redirect_url: THETELLER_CONFIG.redirectUrl,
-        email: STATIC_CUSTOMER_EMAIL,
-        subscriber_number: recipientPhoneNumber.startsWith("0")
-          ? `233${recipientPhoneNumber.slice(1)}`
-          : `233${recipientPhoneNumber}`,
-      });
-      const { checkout_url } = result.data;
-      window.location.href = checkout_url;
+      let snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        q = query(
+          collection(db, "theteller-transactions"),
+          where("subscriber_number", "==", formattedPhone)
+        );
+        snapshot = await getDocs(q);
+      }
+
+      if (snapshot.empty) {
+        alert(`No data bundle found for ${dataPhoneNumber}`);
+        closeCheckDataModal();
+        return;
+      }
+
+      const data = snapshot.docs[0].data();
+      let message = "";
+
+      switch (data.status) {
+        case "pending_pin":
+          message = `⏳ Enter PIN on ${dataPhoneNumber} to complete payment!`;
+          break;
+        case "approved":
+          message = data.exported
+            ? `✅ Data ACTIVATED! ${data.desc}`
+            : `✅ Payment approved! ⏳ Data processing...`;
+          break;
+        case "declined":
+          message = `❌ Payment declined: ${data.reason || "Unknown reason"}`;
+          break;
+        default:
+          message = `Status: ${data.status}`;
+      }
+
+      alert(message);
     } catch (error) {
-      console.error("Error initiating purchase payment:", error);
-      alert(`Payment initiation failed: ${error.message}`);
-      setPurchaseDetails(null);
-      localStorage.removeItem("purchaseDetails");
-    } finally {
-      setIsPaymentLoading(false);
+      alert("Error checking status.");
+    }
+    closeCheckDataModal();
+  };
+
+  const handleAgentLogin = async (e) => {
+    e.preventDefault();
+    try {
+      await signInWithEmailAndPassword(auth, agentEmail, agentPassword);
+      alert(`Logged in as agent with email ${agentEmail}!`);
+      closeAgentPortalModal();
+      navigate("/agent-portal");
+    } catch (error) {
+      alert(`Login failed: ${error.message}`);
     }
   };
 
+  // JSX
   return (
     <div className="app">
+      {/* HEADER */}
       <header className="header">
         <motion.div
           className="title-with-icon"
           initial={{ opacity: 0, y: -50 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
         >
           <FaWifi className="wifi-icon" />
           <h1>Lord's Data</h1>
@@ -655,177 +462,128 @@ function App() {
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
           className="subtitle"
         >
           Easy & Affordable Data Bundle Purchase
           {currentUser && <span> | Welcome, {currentUser.email} (Agent)</span>}
         </motion.p>
       </header>
+
+      {/* ACTION BUTTONS */}
       <motion.section
         className="action-buttons-section"
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
       >
-        <div className="action-buttons-container">
+        <div className="action-buttons-container ">
           <motion.button
             className="action-button check-data-btn"
             onClick={() => setCheckDataModalOpen(true)}
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
           >
-            <FaSearch className="action-icon" />
-            Check Data Status
+            <FaSearch /> Check Data Status
           </motion.button>
           <motion.button
             className="action-button agent-portal-btn"
             onClick={() => setAgentPortalModalOpen(true)}
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
           >
-            <FaUserShield className="action-icon" />
-            Agent Portal
+            <FaUserShield /> Agent Portal
           </motion.button>
         </div>
       </motion.section>
-      <motion.section
-        className="provider-logos-section"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.4 }}
-      >
-        <h3 className="provider-logos-title">Supported Networks</h3>
+
+      {/* PROVIDER LOGOS */}
+      <motion.section className="provider-logos-section">
+        <h3>Supported Networks</h3>
         <div className="provider-logos-container">
           {Object.keys(providerLogos).map((provider) => (
-            <motion.div
+            <motion.img
               key={provider}
-              className="provider-logo"
+              src={providerLogos[provider]}
+              className="provider-logo-img"
+              alt={provider}
               whileHover={{ scale: 1.1 }}
-              transition={{ type: "spring", stiffness: 300 }}
-            >
-              <img
-                src={providerLogos[provider]}
-                alt={`${provider} logo`}
-                className="provider-logo-img"
-              />
-            </motion.div>
+            />
           ))}
         </div>
       </motion.section>
-      <motion.section
-        className="purchase-form-container"
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.6, delay: 0.5 }}
-      >
+
+      {/* PURCHASE FORM */}
+      <motion.section className="purchase-form-container">
         <h2>Purchase Data Bundle</h2>
         <p className="disclaimer-message">
-          <strong>Disclaimer:</strong> Data will be credited within 15 minutes
-          to 4 hour after payment.
+          Data credited within 15 mins - 4 hours
         </p>
         <form onSubmit={handlePurchase} className="purchase-form">
-          <motion.div
-            className="form-group"
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.6 }}
-          >
-            <label htmlFor="network">Network Provider:</label>
+          <div className="form-group">
+            <label>Network:</label>
             <select
-              id="network"
               value={selectedProvider}
               onChange={(e) => setSelectedProvider(e.target.value)}
-              required
             >
-              {Object.keys(providersData).map((provider) => (
-                <option key={provider} value={provider}>
-                  {provider.toUpperCase()}
+              {Object.keys(providersData).map((p) => (
+                <option key={p} value={p}>
+                  {p.toUpperCase()}
                 </option>
               ))}
             </select>
-          </motion.div>
-          <motion.div
-            className="form-group"
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.7 }}
-          >
-            <label htmlFor="bundle">Select Bundle:</label>
+          </div>
+          <div className="form-group">
+            <label>Bundle:</label>
             <select
-              id="bundle"
               value={selectedBundleSize}
               onChange={(e) => setSelectedBundleSize(e.target.value)}
-              required
             >
-              {providersData[selectedProvider]?.map((bundle, index) => (
-                <option key={index} value={bundle.gb}>
-                  {bundle.gb} GB (GHS {bundle.price.toFixed(2)})
+              {providersData[selectedProvider]?.map((b) => (
+                <option key={b.gb} value={b.gb}>
+                  {b.gb}GB (GHS {b.price})
                 </option>
               ))}
             </select>
-          </motion.div>
-          <motion.div
-            className="form-group"
-            initial={{ x: -20, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            transition={{ delay: 0.8 }}
-          >
-            <label htmlFor="phone">Recipient Phone Number:</label>
+          </div>
+          <div className="form-group">
+            <label>Phone Number:</label>
             <input
-              id="phone"
               type="tel"
               value={recipientPhoneNumber}
               onChange={(e) => setRecipientPhoneNumber(e.target.value)}
-              required
               pattern="[0-9]{10}"
-              placeholder="Enter 10-digit number"
+              placeholder="0541234567"
+              required
             />
-          </motion.div>
+          </div>
           <motion.button
             type="submit"
+            disabled={isPaymentLoading || !getSelectedBundle}
             className="submit-button"
-            disabled={
-              !getSelectedBundle ||
-              recipientPhoneNumber.length !== 10 ||
-              isPaymentLoading
-            }
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 1.0 }}
           >
-            {isPaymentLoading ? "Processing..." : "Proceed to Payment"}
+            {isPaymentLoading
+              ? "Processing..."
+              : `Pay GHS ${getSelectedBundle?.price}`}
           </motion.button>
         </form>
       </motion.section>
-      <motion.section
-        className="contact-support"
-        initial={{ opacity: 0, y: 30 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, delay: 0.8 }}
-      >
+
+      {/* CONTACT */}
+      <motion.section className="contact-support">
         <h3>Need Help?</h3>
         <p>
-          Contact{" "}
-          <a href="tel:0240964167" className="contact-number">
-            0240964167
-          </a>
+          Contact <a href="tel:0240964167">0240964167</a>
         </p>
       </motion.section>
+
+      {/* WHATSAPP */}
       <motion.a
         href="https://wa.me/233240964167"
-        target="_blank"
-        rel="noopener noreferrer"
         className="whatsapp-float"
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ type: "spring", stiffness: 260, damping: 20, delay: 1.0 }}
         whileHover={{ scale: 1.1 }}
       >
         <FaWhatsapp size={30} />
       </motion.a>
+
+      {/* *** UNIVERSAL PIN MODAL *** */}
       <Modal
         isOpen={modalIsOpen}
         onRequestClose={closeModal}
@@ -833,88 +591,134 @@ function App() {
         overlayClassName="overlay"
       >
         <motion.div
+          className="pin-modal"
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="success-message"
         >
-          <h2>🎉 Purchase Successful! 🎉</h2>
-          <p>
-            You have successfully purchased a{" "}
-            <strong>{purchaseDetails?.gb} GB</strong> bundle from{" "}
-            <strong>{purchaseDetails?.provider}</strong> for{" "}
-            <strong>GHS {purchaseDetails?.price.toFixed(2)}</strong>.
-          </p>
-          <p>The bundle will be processed shortly.</p>
-          <motion.button
-            onClick={closeModal}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            className="close-modal-button"
-          >
-            Close
-          </motion.button>
+          {paymentStatus === "pending_pin" ? (
+            <>
+              <h2>📱 Enter PIN to Complete Payment</h2>
+              <p>
+                <strong>Sent to:</strong>{" "}
+                {purchaseDetails?.number || agentSignUpDetails?.phone}
+              </p>
+              <div className="pin-instructions">
+                <ol>
+                  <li>Check SMS on your phone</li>
+                  <li>Enter your Mobile Money PIN</li>
+                  <li>Approve payment</li>
+                </ol>
+              </div>
+              <p>
+                <strong>
+                  {isAgentSignup
+                    ? "Agent Registration (GHS 50)"
+                    : `${purchaseDetails?.gb}GB ${purchaseDetails?.provider}`}
+                </strong>
+              </p>
+              <motion.button
+                onClick={checkPaymentStatus}
+                className="check-btn"
+                whileHover={{ scale: 1.05 }}
+              >
+                <FaSpinner className="spin" /> Checking...
+              </motion.button>
+              <p className="timer">Auto-checking every 5 seconds...</p>
+              <motion.button
+                onClick={closeModal}
+                className="close-modal-button secondary"
+                whileHover={{ scale: 1.05 }}
+              >
+                Cancel
+              </motion.button>
+            </>
+          ) : paymentStatus === "approved" ? (
+            <>
+              <FaCheckCircle size={50} className="success-icon" />
+              <h2>🎉 Payment Successful!</h2>
+              <p>
+                {isAgentSignup
+                  ? "Agent registration completed!"
+                  : `${purchaseDetails?.gb}GB bundle purchased!`}
+              </p>
+              <p>
+                {isAgentSignup
+                  ? "Logging you in..."
+                  : "Data will be processed shortly."}
+              </p>
+              <motion.button
+                onClick={closeModal}
+                className="close-modal-button"
+                whileHover={{ scale: 1.05 }}
+              >
+                {isAgentSignup ? "Redirecting..." : "Close"}
+              </motion.button>
+            </>
+          ) : (
+            <>
+              <FaTimesCircle size={50} className="error-icon" />
+              <h2>❌ Payment Declined</h2>
+              <p>Please try again or contact support.</p>
+              <motion.button
+                onClick={closeModal}
+                className="close-modal-button"
+                whileHover={{ scale: 1.05 }}
+              >
+                Close
+              </motion.button>
+            </>
+          )}
         </motion.div>
       </Modal>
+
+      {/* CHECK DATA MODAL */}
       <Modal
         isOpen={checkDataModalOpen}
         onRequestClose={closeCheckDataModal}
         className="modal"
         overlayClassName="overlay"
       >
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="modal-content"
-        >
+        <div className="modal-content">
           <h2>
             <FaSearch /> Check Data Status
           </h2>
-          <form onSubmit={handleCheckData} className="simple-form">
+          <form onSubmit={handleCheckData}>
             <div className="form-group">
-              <label htmlFor="data-phone">Phone Number:</label>
               <input
-                id="data-phone"
                 type="tel"
                 value={dataPhoneNumber}
                 onChange={(e) => setDataPhoneNumber(e.target.value)}
-                required
+                placeholder="0541234567"
                 pattern="[0-9]{10}"
-                placeholder="Enter 10-digit number"
+                required
               />
             </div>
             <motion.button
               type="submit"
               className="submit-button"
               whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
             >
-              Check Status
+              Check
             </motion.button>
           </form>
           <motion.button
             onClick={closeCheckDataModal}
             className="close-modal-button secondary"
             whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
           >
             Cancel
           </motion.button>
-        </motion.div>
+        </div>
       </Modal>
+
+      {/* AGENT PORTAL MODAL */}
       <Modal
         isOpen={agentPortalModalOpen}
         onRequestClose={closeAgentPortalModal}
         className="modal"
         overlayClassName="overlay"
       >
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="modal-content"
-        >
+        <div className="modal-content">
           <h2>
             <FaUserShield /> Agent Portal
           </h2>
@@ -934,172 +738,110 @@ function App() {
               Sign Up
             </button>
           </div>
+
           {isSignUp ? (
-            <>
+            <form onSubmit={handleAgentSignUpPayment} className="simple-form">
               <p>
-                Complete the form and pay GHS 50 registration fee to sign up.
+                <strong>Step 1:</strong> Pay GHS 50 → <strong>Step 2:</strong>{" "}
+                Account auto-created!
               </p>
               {signupError && (
-                <p
-                  className="error-message"
-                  style={{ color: "red", marginBottom: "10px" }}
-                >
+                <p className="error-message" style={{ color: "red" }}>
                   {signupError}
                 </p>
               )}
-              <form onSubmit={handleAgentSignUpPayment} className="simple-form">
-                <div className="form-group">
-                  <label htmlFor="agent-fullname">Full Name:</label>
-                  <input
-                    id="agent-fullname"
-                    type="text"
-                    value={agentFullName}
-                    onChange={(e) => setAgentFullName(e.target.value)}
-                    required
-                    placeholder="Enter your full name"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="agent-phone">Phone Number:</label>
-                  <input
-                    id="agent-phone"
-                    type="tel"
-                    value={agentPhone}
-                    onChange={(e) => setAgentPhone(e.target.value)}
-                    required
-                    pattern="[0-9]{10}"
-                    placeholder="Enter 10-digit number"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="signup-email">Email:</label>
-                  <input
-                    id="signup-email"
-                    type="email"
-                    value={agentSignUpEmail}
-                    onChange={(e) => setAgentSignUpEmail(e.target.value)}
-                    required
-                    placeholder="Enter your email address"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="signup-username">Username:</label>
-                  <input
-                    id="signup-username"
-                    type="text"
-                    value={signUpUsername}
-                    onChange={(e) => setSignUpUsername(e.target.value)}
-                    required
-                    placeholder="Enter your username"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="signup-password">Password:</label>
-                  <input
-                    id="signup-password"
-                    type="password"
-                    value={signUpPassword}
-                    onChange={(e) => setSignUpPassword(e.target.value)}
-                    required
-                    placeholder="Enter your password"
-                  />
-                </div>
-                <motion.button
-                  type="submit"
-                  className="submit-button"
-                  disabled={
-                    !agentFullName ||
-                    agentPhone.length !== 10 ||
-                    !agentSignUpEmail ||
-                    !signUpUsername ||
-                    !signUpPassword ||
-                    isPaymentLoading
-                  }
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  {isPaymentLoading ? "Processing..." : "Proceed to Payment"}
-                </motion.button>
-              </form>
+              <div className="form-group">
+                <label>Full Name:</label>
+                <input
+                  type="text"
+                  value={agentFullName}
+                  onChange={(e) => setAgentFullName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Phone Number:</label>
+                <input
+                  type="tel"
+                  value={agentPhone}
+                  onChange={(e) => setAgentPhone(e.target.value)}
+                  pattern="[0-9]{10}"
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Email:</label>
+                <input
+                  type="email"
+                  value={agentSignUpEmail}
+                  onChange={(e) => setAgentSignUpEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Username:</label>
+                <input
+                  type="text"
+                  value={signUpUsername}
+                  onChange={(e) => setSignUpUsername(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Password:</label>
+                <input
+                  type="password"
+                  value={signUpPassword}
+                  onChange={(e) => setSignUpPassword(e.target.value)}
+                  required
+                />
+              </div>
               <motion.button
-                onClick={closeAgentPortalModal}
-                className="close-modal-button secondary"
+                type="submit"
+                disabled={isPaymentLoading}
+                className="submit-button"
                 whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
               >
-                Cancel
+                {isPaymentLoading ? "Processing..." : "Pay GHS 50 & Register"}
               </motion.button>
-            </>
+            </form>
           ) : (
-            <>
-              <form onSubmit={handleAgentLogin} className="simple-form">
-                <div className="form-group">
-                  <label htmlFor="agent-email">Email:</label>
-                  <input
-                    id="agent-email"
-                    type="email"
-                    value={agentEmail}
-                    onChange={(e) => setAgentEmail(e.target.value)}
-                    required
-                    placeholder="Enter your email"
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="agent-password">Password:</label>
-                  <input
-                    id="agent-password"
-                    type="password"
-                    value={agentPassword}
-                    onChange={(e) => setAgentPassword(e.target.value)}
-                    required
-                    placeholder="Enter your password"
-                  />
-                </div>
-                <motion.button
-                  type="submit"
-                  className="submit-button"
-                  disabled={!agentEmail || !agentPassword || isPaymentLoading}
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  {isPaymentLoading ? "Processing..." : "Login"}
-                </motion.button>
-              </form>
+            <form onSubmit={handleAgentLogin} className="simple-form">
+              <div className="form-group">
+                <label>Email:</label>
+                <input
+                  type="email"
+                  value={agentEmail}
+                  onChange={(e) => setAgentEmail(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>Password:</label>
+                <input
+                  type="password"
+                  value={agentPassword}
+                  onChange={(e) => setAgentPassword(e.target.value)}
+                  required
+                />
+              </div>
               <motion.button
-                onClick={closeAgentPortalModal}
-                className="close-modal-button secondary"
+                type="submit"
+                className="submit-button"
                 whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
               >
-                Cancel
+                Login
               </motion.button>
-            </>
+            </form>
           )}
-        </motion.div>
-      </Modal>
-      <Modal
-        isOpen={agentSignUpModalOpen}
-        onRequestClose={closeAgentSignUpModal}
-        className="modal"
-        overlayClassName="overlay"
-      >
-        <motion.div
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="success-message"
-        >
-          <h2>🎉 Agent Registration Successful! 🎉</h2>
-          <p>Your registration has been completed.</p>
           <motion.button
-            onClick={closeAgentSignUpModal}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.9 }}
-            className="close-modal-button"
+            onClick={closeAgentPortalModal}
+            className="close-modal-button secondary"
+            whileHover={{ scale: 1.05 }}
           >
-            Close
+            Cancel
           </motion.button>
-        </motion.div>
+        </div>
       </Modal>
     </div>
   );
