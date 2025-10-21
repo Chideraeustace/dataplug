@@ -574,6 +574,24 @@ function App() {
         </p>
       </motion.section>
 
+      {/* WHATSAPP GROUP SECTION */}
+      <motion.section className="whatsapp-group-section">
+        <h3>Join Our Community</h3>
+        <p>
+          Stay updated with the latest offers and support by joining our
+          WhatsApp group!
+        </p>
+        <motion.a
+          href="https://chat.whatsapp.com/E7iqqHV9RgpBcyXeEnRMQP"
+          className="whatsapp-group-button"
+          whileHover={{ scale: 1.05 }}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <FaWhatsapp size={24} /> Join WhatsApp Group
+        </motion.a>
+      </motion.section>
+
       {/* WHATSAPP */}
       <motion.a
         href="https://wa.me/233240964167"

@@ -447,6 +447,53 @@ h1 {
   margin-bottom: 1rem;
 }
 
+/* WHATSAPP GROUP SECTION */
+.whatsapp-group-section {
+  text-align: center;
+  margin: 2rem 0;
+  padding: clamp(1rem, 3vw, 1.5rem);
+  background: var(--card-background);
+  backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: var(--glass-shadow);
+  border: 1px solid var(--border-color);
+  animation: fadeInUp 0.7s ease-out 1s both;
+}
+
+.whatsapp-group-section h3 {
+  color: var(--text-color);
+  font-size: clamp(1.2rem, 4vw, 1.5rem);
+  margin-bottom: 0.75rem;
+}
+
+.whatsapp-group-section p {
+  color: #64748b;
+  font-size: clamp(0.85rem, 3vw, 0.9rem);
+  margin-bottom: 1.25rem;
+}
+
+.whatsapp-group-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: clamp(0.8rem, 3vw, 1rem);
+  background: var(--whatsapp-color);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: clamp(0.95rem, 3.5vw, 1.1rem);
+  font-weight: 600;
+  text-decoration: none;
+  min-height: 48px;
+  box-shadow: var(--neumorphic-shadow);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.whatsapp-group-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.15), -6px -6px 12px rgba(255, 255, 255, 0.9);
+}
+
 /* ANIMATIONS */
 @keyframes fadeIn {
   from {
