@@ -80,7 +80,7 @@ const providersData = {
     { gb: 100, price: 450.0 },
   ],
   mtn: [
-    { gb: 1, price: 1.0 },
+    { gb: 1, price: 6.0 },
     { gb: 2, price: 12.0 },
     { gb: 3, price: 16.5 },
     { gb: 4, price: 23.0 },
@@ -591,7 +591,7 @@ function App() {
       <motion.section className="purchase-form-container">
         <h2>Purchase Data Bundle</h2>
         <p className="disclaimer-message">
-          Data credited within 15 mins - 4 hours
+          Data credited within 5 mins - 4 hours
         </p>
         <form onSubmit={handlePurchase} className="purchase-form">
           <div className="form-group">
