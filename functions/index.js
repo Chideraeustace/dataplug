@@ -5,13 +5,27 @@ const admin = require("firebase-admin");
 
 admin.initializeApp();
 const db = admin.firestore();
-const auth = admin.auth();
+
+// Phone number formatting function
+const formatPhoneNumber = (phone) => {
+  if (!phone) return "";
+  if (phone.startsWith("0") && phone.length === 10) {
+    return `233${phone.slice(1)}`;
+  }
+  if (phone.startsWith("233") && phone.length === 13) {
+    return phone;
+  }
+  return `233${phone}`;
+};
 
 exports.initiateThetellerPayment = onCall(
   {timeoutSeconds: 120},
-  async ({data, context}) => {
-    // Log the full received payload for debugging
-    logger.info("Received payload:", data);
+  async ({data, auth}) => {
+    logger.info("Received payload:", {
+      ...data,
+      recipient_number: data.recipient_number || "none",
+      subscriber_number: data.subscriber_number || "none",
+    });
 
     const {
       merchant_id,
@@ -19,252 +33,290 @@ exports.initiateThetellerPayment = onCall(
       desc,
       amount,
       subscriber_number,
+      recipient_number,
       r_switch,
       email,
-      status,
-      code,
-      reason,
       isAgentSignup = false,
+      isCallback = false,
     } = data;
 
-    // Determine if this is a callback based on the presence of status and transaction_id
-    const isCallback = status && transaction_id;
+    const userId = auth?.uid; // Get userId from auth context
 
-    // *** INITIATION (NO REDIRECT) ***
-    if (!isCallback) {
-      // *** FOR AGENT SIGNUP - CREATE USER IMMEDIATELY ***
-      let agentUid = null;
-      if (isAgentSignup) {
-        try {
-          const agentData = JSON.parse(desc);
-          const userCredential = await auth.createUser({
-            email: agentData.email,
-            password: agentData.password,
-          });
-          agentUid = userCredential.uid;
-
-          await db.collection("lords-agents").doc(userCredential.uid).set({
-            fullName: agentData.fullName,
-            phone: agentData.phone,
-            username: agentData.username,
-            email: agentData.email,
-            registeredAt: admin.firestore.FieldValue.serverTimestamp(),
-            isActive: false, // Will be activated after payment
-          });
-
-          logger.info(
-            `AGENT USER CREATED (PENDING PAYMENT): ${userCredential.uid}`
-          );
-        } catch (error) {
-          logger.error("Agent user creation failed:", error);
-          throw new HttpsError(
-            "internal",
-            `Failed to create agent account: ${error.message}`
-          );
-        }
+    // Handle transaction status check
+    if (isCallback) {
+      // Check Firestore cache first
+      const statusDoc = await db
+        .collection("transaction_status_cache")
+        .doc(transaction_id)
+        .get();
+      if (statusDoc.exists) {
+        const cachedStatus = statusDoc.data();
+        logger.info("Using cached status:", {
+          transaction_id,
+          status: cachedStatus.status,
+          code: cachedStatus.code,
+          reason: cachedStatus.reason,
+        });
+        return {
+          final_status: cachedStatus.status,
+          code: cachedStatus.code,
+          reason: cachedStatus.reason,
+          transaction_id,
+        };
       }
-
-      // Validation
-      if (!merchant_id || typeof merchant_id !== "string") {
-        throw new HttpsError(
-          "invalid-argument",
-          `Merchant ID required, received: ${JSON.stringify(merchant_id)}`
-        );
-      }
-      if (!transaction_id || !/^\d{12}$/.test(transaction_id)) {
-        throw new HttpsError(
-          "invalid-argument",
-          "Transaction ID must be 12 digits"
-        );
-      }
-      if (!desc || typeof desc !== "string") {
-        throw new HttpsError("invalid-argument", "Description required");
-      }
-      if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
-        throw new HttpsError("invalid-argument", "Valid amount required");
-      }
-      if (!subscriber_number || !/^\d{10,13}$/.test(subscriber_number)) {
-        throw new HttpsError("invalid-argument", "Valid phone number required");
-      }
-
-      if (!isAgentSignup) {
-        const allowed_r_switches = ["MTN", "VDF", "ATL", "TGO", "ZPY", "GMY"];
-        if (!r_switch || !allowed_r_switches.includes(r_switch)) {
-          throw new HttpsError(
-            "invalid-argument",
-            `Valid r_switch required: ${allowed_r_switches.join(", ")}`
-          );
-        }
-      }
-
-      const formattedAmount = parseFloat(amount).toFixed(0).padStart(12, "0");
-
-      const requestBody = {
-        amount: formattedAmount,
-        processing_code: "000200",
-        transaction_id,
-        desc,
-        merchant_id,
-        subscriber_number,
-        "r-switch": r_switch || "MTN",
-      };
 
       try {
-        const response = await axios.post(
-          "https://prod.theteller.net/v1.1/transaction/process",
-          requestBody,
+        const response = await axios.get(
+          `https://prod.theteller.net/v1.1/users/transactions/${transaction_id}/status`,
           {
             headers: {
               "Content-Type": "application/json",
-              Authorization:
-                "Basic eXVzc2lmNjcwZDM4M2NhZjU0NDpaV0kxWWpOallURmhOMk5qTTJFME5HRmpPVFJtWWpreU5UZzNaVGxtTjJNPQ==",
+              "Merchant-Id": "TTM-00009769",
               "Cache-Control": "no-cache",
             },
           }
         );
 
-        // Log the full Theteller response (sanitized)
-        logger.info("Theteller full response:", {
-          status: response.data.status,
-          code: response.data.code,
-          reason: response.data.reason,
-          transaction_id: response.data.transaction_id,
+        const {status, code, reason} = response.data;
+        logger.info("Theteller status check response:", {
+          status,
+          code,
+          reason,
+          transaction_id,
         });
 
-        const responseData = response.data;
-
-        if (responseData.status !== "approved" || responseData.code !== "000") {
-          // *** IF AGENT - DELETE USER ON PAYMENT FAILURE ***
-          if (isAgentSignup && agentUid) {
-            try {
-              await auth.deleteUser(agentUid);
-              await db.collection("lords-agents").doc(agentUid).delete();
-              logger.info(`AGENT USER DELETED (PAYMENT FAILED): ${agentUid}`);
-            } catch (cleanupError) {
-              logger.error("Cleanup failed:", cleanupError);
-            }
-          }
-          throw new HttpsError(
-            "internal",
-            `Payment initiation failed: ${responseData.reason}`
-          );
+        // Cache the status in Firestore (only for approved or declined)
+        if (status === "approved" || status === "declined") {
+          await db
+            .collection("transaction_status_cache")
+            .doc(transaction_id)
+            .set({
+              status,
+              code,
+              reason,
+              transaction_id,
+              cachedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
         }
 
-        // *** STORE PENDING TRANSACTION ***
-        await db
-          .collection("theteller-transactions")
-          .doc(transaction_id)
-          .set({
-            merchant_id,
-            transaction_id,
-            amount: parseFloat(amount),
-            status: "pending_pin",
-            code: "001",
-            reason: "Awaiting PIN confirmation",
-            desc,
-            subscriber_number,
-            r_switch: r_switch || "MTN",
-            email: email || "customer@lordsdata.com",
-            isAgentSignup,
-            agentUid, // Store agent UID if created
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-
-        logger.info(
-          `Transaction INITIATED: ${transaction_id} | Type: ${
-            isAgentSignup ? "AGENT" : "DATA"
-          }`
-        );
-
         return {
-          status: "initiated",
-          message: "Check your phone for PIN prompt",
+          final_status: status,
+          code,
+          reason,
           transaction_id,
         };
       } catch (error) {
-        logger.error("Theteller initiation error:", error);
+        logger.error("Theteller status check error:", {
+          message: error.message,
+          transaction_id,
+        });
         throw new HttpsError(
           "internal",
-          `Failed to initiate payment: ${error.message}`
+          `Failed to check transaction status: ${error.message}`
         );
       }
-    } else {
-      // Log the full callback payload with specific fields
-      logger.info("Theteller callback full response:", {
-        receivedData: data,
-        isDataEmpty: !data,
-        status: status || "missing",
-        code: code || "missing",
-        reason: reason || "missing",
-        transaction_id: transaction_id || "missing",
+    }
+
+    // Validation for payment initiation
+    if (!merchant_id || typeof merchant_id !== "string") {
+      throw new HttpsError(
+        "invalid-argument",
+        `Merchant ID required, received: ${JSON.stringify(merchant_id)}`
+      );
+    }
+    if (!transaction_id || !/^\d{12}$/.test(transaction_id)) {
+      throw new HttpsError(
+        "invalid-argument",
+        "Transaction ID must be 12 digits"
+      );
+    }
+    if (!desc || typeof desc !== "string") {
+      throw new HttpsError("invalid-argument", "Description required");
+    }
+    if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
+      throw new HttpsError("invalid-argument", "Valid amount required");
+    }
+    if (!subscriber_number || !/^\d{10,12}$/.test(subscriber_number)) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Valid MoMo number (10 or 13 digits) required, received: ${subscriber_number}`
+      );
+    }
+    if (
+      !isAgentSignup &&
+      (!recipient_number ||
+        (!/^\d{10}$/.test(recipient_number) &&
+          !/^\d{12}$/.test(recipient_number)))
+    ) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Valid recipient number (10 or 13 digits) required for data purchase, received: ${
+          recipient_number || "none"
+        }`
+      );
+    }
+    const allowed_r_switches = ["MTN", "VDF", "ATL", "TGO", "ZPY", "GMY"];
+    if (!r_switch || !allowed_r_switches.includes(r_switch)) {
+      throw new HttpsError(
+        "invalid-argument",
+        `Valid payment network required: ${allowed_r_switches.join(
+          ", "
+        )}, received: ${r_switch}`
+      );
+    }
+
+    // Check for duplicate transaction
+    const existingDoc = await db
+      .collection("approve_teller_transaction")
+      .doc(transaction_id)
+      .get();
+    if (existingDoc.exists) {
+      logger.warn(`Transaction ${transaction_id} already exists`);
+      return {
+        status: "approved",
+        message: isAgentSignup ?
+          "Agent registration payment already processed" :
+          "Data purchase payment already processed",
+        transaction_id,
+      };
+    }
+
+    const formattedAmount = parseFloat(amount).toFixed(0).padStart(12, "0");
+
+    const requestBody = {
+      amount: formattedAmount,
+      processing_code: "000200",
+      transaction_id,
+      desc,
+      merchant_id,
+      subscriber_number,
+      "r-switch": r_switch,
+    };
+
+    try {
+      const response = await axios.post(
+        "https://prod.theteller.net/v1.1/transaction/process",
+        requestBody,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization:
+              "Basic eXVzc2lmNjcwZDM4M2NhZjU0NDpaV0kxWWpOallURmhOMk5qTTJFME5HRmpPVFJtWWpreU5UZzNaVGxtTjJNPQ==",
+            "Cache-Control": "no-cache",
+          },
+        }
+      );
+
+      logger.info("Theteller full response:", {
+        status: response.data.status,
+        code: response.data.code,
+        reason: response.data.reason,
+        transaction_id: response.data.transaction_id,
       });
 
-      try {
-        // Validate callback payload
-        if (!transaction_id || !status) {
-          logger.error("Invalid callback payload:", {
-            transaction_id,
-            status,
-          });
-          return {
-            status: "error",
-            message:
-              "Invalid callback payload: missing transaction_id or status",
-          };
-        }
+      const responseData = response.data;
 
-        const doc = await db
-          .collection("theteller-transactions")
-          .doc(transaction_id)
-          .get();
-        if (!doc.exists) {
-          logger.error("Transaction not found in Firestore:", {
-            transaction_id,
-          });
-          return {status: "error", message: "Transaction not found"};
-        }
-
-        const transaction = doc.data();
-
-        // Update with FINAL result
-        await db
-          .collection("theteller-transactions")
-          .doc(transaction_id)
-          .update({
-            status: status || "unknown",
-            code: code || "999",
-            reason: reason || "Callback received",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            exported: status === "approved" ? false : null,
-          });
-
-        // *** ACTIVATE AGENT ON SUCCESS ***
-        if (
-          transaction.isAgentSignup &&
-          status === "approved" &&
-          transaction.agentUid
-        ) {
-          await db.collection("lords-agents").doc(transaction.agentUid).update({
-            isActive: true,
-          });
-          logger.info(`AGENT ACTIVATED: ${transaction.agentUid}`);
-        }
-
-        logger.info(`Transaction CALLBACK: ${transaction_id} - ${status}`);
-        if (status === "approved") {
-          logger.info(`Transaction APPROVED and updated: ${transaction_id}`);
-        }
-
-        return {
-          status: "callback_processed",
-          final_status: status,
-          final_code: code,
-          reason: reason,
-        };
-      } catch (error) {
-        logger.error("Callback error:", error);
-        return {status: "error", message: error.message};
+      if (responseData.status !== "approved" || responseData.code !== "000") {
+        throw new HttpsError(
+          "internal",
+          `Payment initiation failed: ${responseData.reason}`
+        );
       }
+
+      let agentDetails = {};
+      if (isAgentSignup) {
+        try {
+          agentDetails = JSON.parse(desc);
+          const {
+            email,
+            password,
+            fullName,
+            phone,
+            momoNumber,
+            paymentNetwork,
+          } = agentDetails;
+
+          // Format phone number for agent
+          const formattedAgentPhone = formatPhoneNumber(phone);
+
+          // Create Firebase Auth user
+          const userRecord = await admin.auth().createUser({
+            email,
+            password,
+            displayName: fullName,
+          });
+
+          // Store agent details in Firestore
+          await db.collection("lords-agents").doc(userRecord.uid).set({
+            fullName,
+            phone: formattedAgentPhone,
+            momoNumber,
+            paymentNetwork,
+            email,
+            username: agentDetails.username,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+
+          logger.info(`Agent created: ${userRecord.uid}`);
+        } catch (authError) {
+          logger.error("Agent creation error:", {
+            message: authError.message,
+          });
+          throw new HttpsError(
+            "internal",
+            `Agent creation failed: ${authError.message}`
+          );
+        }
+      }
+
+      // Store approved transaction in Firestore
+      await db
+        .collection("approve_teller_transaction")
+        .doc(transaction_id)
+        .set({
+          merchant_id,
+          transaction_id,
+          amount: parseFloat(amount),
+          status: responseData.status,
+          code: responseData.code,
+          reason: responseData.reason,
+          desc,
+          subscriber_number,
+          recipient_number: isAgentSignup ?
+            null :
+            formatPhoneNumber(recipient_number || subscriber_number),
+          r_switch,
+          email: email || "customer@lordsdata.com",
+          isAgentSignup,
+          exported: false,
+          userId: userId || null, // Add userId
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+      logger.info(
+        `Transaction APPROVED: ${transaction_id} | Type: ${
+          isAgentSignup ? "AGENT" : "DATA"
+        } | Recipient: ${recipient_number || "none"} | UserId: ${
+          userId || "none"
+        }`
+      );
+
+      return {
+        status: "approved",
+        message: isAgentSignup ?
+          "Agent registration payment approved" :
+          "Data purchase payment approved",
+        transaction_id,
+      };
+    } catch (error) {
+      logger.error("Theteller initiation error:", {
+        message: error.message,
+        transaction_id,
+      });
+      throw new HttpsError(
+        "internal",
+        `Failed to initiate payment: ${error.message}`
+      );
     }
   }
 );

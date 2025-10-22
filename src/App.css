@@ -3,59 +3,71 @@
 :root {
   --primary-color: #4f46e5;
   /* Indigo */
-  --primary-gradient: linear-gradient(135deg, #4f46e5, #7c3aed);
+  --primary-gradient: linear-gradient(135deg, #5b21b6, #7c3aed);
   --secondary-color: #10b981;
   /* Emerald */
-  --secondary-gradient: linear-gradient(135deg, #10b981, #34d399);
+  --secondary-gradient: linear-gradient(135deg, #059669, #34d399);
   --whatsapp-color: #25D366;
   --warning-color: #f59e0b;
   --info-color: #06b6d4;
   --agent-color: #8b5cf6;
-  --agent-gradient: linear-gradient(135deg, #8b5cf6, #a78bfa);
-  --text-color: #1f2937;
-  --background-color: #f8fafc;
-  --card-background: rgba(255, 255, 255, 0.9);
-  --border-color: rgba(203, 213, 225, 0.5);
-  --glass-background: rgba(255, 255, 255, 0.1);
-  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  --neumorphic-shadow: 4px 4px 10px rgba(0, 0, 0, 0.1), -4px -4px 10px rgba(255, 255, 255, 0.7);
-  --focus-shadow: 0 0 0 4px rgba(79, 70, 229, 0.3);
+  --agent-gradient: linear-gradient(135deg, #7c3aed, #a78bfa);
+  --text-color: #111827;
+  /* Darker for better contrast */
+  --background-color: #f1f5f9;
+  /* Softer background */
+  --card-background: rgba(255, 255, 255, 0.95);
+  --border-color: rgba(203, 213, 225, 0.6);
+  --glass-background: rgba(255, 255, 255, 0.15);
+  --glass-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+  --neumorphic-shadow: 3px 3px 8px rgba(0, 0, 0, 0.08), -3px -3px 8px rgba(255, 255, 255, 0.8);
+  --focus-shadow: 0 0 0 3px rgba(79, 70, 229, 0.4);
+  --error-color: #dc2626;
+  --background-gradient: linear-gradient(180deg, #e2e8f0 0%, #f1f5f9 100%);
 }
 
 body {
-  display: none;
   margin: 0;
   font-family: 'Poppins', sans-serif;
-  background: var(--background-color);
+  background: var(--background-gradient);
   color: var(--text-color);
-  line-height: 1.7;
+  line-height: 1.6;
   overflow-x: hidden;
 }
 
 .app {
-  padding: 1.5rem 1rem;
-  max-width: 1000px;
-  margin: 1.5rem auto;
+  padding: clamp(1rem, 3vw, 2rem);
+  max-width: 1200px;
+  margin: 1rem auto;
   text-align: center;
-  animation: fadeIn 0.8s ease-out;
+  animation: fadeIn 1s ease-out;
 }
 
 /* HEADER */
 .header {
-  margin-bottom: 2rem;
-  animation: slideInFromTop 0.6s ease-out;
+  margin-bottom: clamp(1.5rem, 4vw, 2.5rem);
+  padding: 1rem;
+  position: sticky;
+  top: 0;
+  background: var(--card-background);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+  border-radius: 12px;
+  box-shadow: var(--glass-shadow);
+  animation: slideInFromTop 0.7s ease-out;
 }
 
 h1 {
   color: var(--primary-color);
-  font-size: clamp(2rem, 6vw, 2.5rem);
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.02em;
+  margin: 0;
 }
 
 .subtitle {
-  font-size: clamp(0.9rem, 3.5vw, 1rem);
-  color: #64748b;
+  font-size: clamp(0.85rem, 3vw, 1rem);
+  color: #6b7280;
   margin-top: 0.5rem;
   font-weight: 400;
 }
@@ -68,7 +80,7 @@ h1 {
 }
 
 .wifi-icon {
-  font-size: clamp(1.8rem, 5vw, 2rem);
+  font-size: clamp(1.5rem, 4vw, 2rem);
   color: var(--secondary-color);
   animation: pulse 2s ease-in-out infinite;
 }
@@ -76,15 +88,14 @@ h1 {
 /* ACTION BUTTONS */
 .action-buttons-section {
   background: var(--card-background);
-  backdrop-filter: blur(12px);
-  padding: clamp(1.5rem, 4vw, 2rem);
-  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border-radius: 14px;
   margin-bottom: 2rem;
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--border-color);
-  animation: fadeInUp 0.7s ease-out 0.2s both;
+  animation: fadeInUp 0.8s ease-out 0.2s both;
   position: relative;
-  overflow: hidden;
 }
 
 .action-buttons-section::before {
@@ -93,24 +104,24 @@ h1 {
   top: 0;
   left: 0;
   width: 100%;
-  height: 4px;
+  height: 3px;
   background: var(--info-color);
   animation: slideInLeft 1s ease-out;
 }
 
 .action-buttons-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1rem;
-  max-width: 800px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: clamp(0.75rem, 2vw, 1rem);
+  max-width: 900px;
   margin: 0 auto;
 }
 
 .action-button {
-  padding: clamp(0.75rem, 3vw, 1rem);
+  padding: clamp(0.75rem, 2.5vw, 1rem);
   border: none;
-  border-radius: 12px;
-  font-size: clamp(0.95rem, 3.5vw, 1rem);
+  border-radius: 10px;
+  font-size: clamp(0.9rem, 3vw, 1rem);
   font-weight: 500;
   cursor: pointer;
   display: flex;
@@ -118,20 +129,24 @@ h1 {
   justify-content: center;
   gap: 0.5rem;
   min-height: 48px;
-  /* Accessible touch target */
   box-shadow: var(--neumorphic-shadow);
-  transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.3s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .action-button:hover {
-  transform: translateY(-3px);
-  box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.15), -6px -6px 12px rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.1), -4px -4px 10px rgba(255, 255, 255, 0.9);
+}
+
+.action-button:focus {
+  outline: none;
+  box-shadow: var(--focus-shadow);
 }
 
 .check-data-btn {
   background: var(--info-gradient);
   color: white;
-  background: #25D366;
+  background-color: #059669;
 }
 
 .agent-portal-btn {
@@ -142,82 +157,86 @@ h1 {
 /* PROVIDER LOGOS */
 .provider-logos-section {
   background: var(--card-background);
-  backdrop-filter: blur(12px);
-  padding: clamp(1.5rem, 4vw, 2rem);
-  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border-radius: 14px;
   margin-bottom: 2rem;
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--border-color);
-  animation: fadeInUp 0.7s ease-out 0.4s both;
+  animation: fadeInUp 0.8s ease-out 0.4s both;
 }
 
 .provider-logos-container {
   display: flex;
   justify-content: center;
-  gap: clamp(1rem, 3vw, 1.5rem);
+  gap: clamp(0.75rem, 2vw, 1.25rem);
   flex-wrap: wrap;
 }
 
 .provider-logo-img {
-  width: clamp(80px, 25vw, 100px);
+  width: clamp(70px, 20vw, 90px);
   height: auto;
-  border-radius: 10px;
+  border-radius: 8px;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
   box-shadow: var(--glass-shadow);
 }
 
 .provider-logo-img:hover {
-  transform: scale(1.08);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  transform: scale(1.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* PURCHASE FORM */
 .purchase-form-container {
   background: var(--card-background);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(10px);
   padding: clamp(1.5rem, 4vw, 2.5rem);
-  border-radius: 16px;
+  border-radius: 14px;
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--border-color);
-  animation: fadeInUp 0.7s ease-out 0.6s both;
+  animation: fadeInUp 0.8s ease-out 0.6s both;
 }
 
 .disclaimer-message {
-  color: #dc2626;
-  font-size: clamp(0.85rem, 3vw, 0.9rem);
-  margin-bottom: 1.25rem;
+  color: var(--error-color);
+  font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+  margin-bottom: 1.5rem;
   font-weight: 500;
+  background: rgba(220, 38, 38, 0.1);
+  padding: 0.5rem;
+  border-radius: 8px;
 }
 
 .purchase-form {
   display: grid;
   grid-template-columns: 1fr;
-  gap: clamp(1rem, 3vw, 1.25rem);
-  max-width: 600px;
+  gap: clamp(0.75rem, 2.5vw, 1rem);
+  max-width: 500px;
   margin: 0 auto;
 }
 
 .form-group {
   text-align: left;
+  position: relative;
 }
 
 .form-group label {
   font-weight: 500;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
   display: block;
   color: var(--text-color);
-  font-size: clamp(0.9rem, 3.5vw, 1rem);
+  font-size: clamp(0.85rem, 2.5vw, 0.95rem);
 }
 
 .form-group input,
 .form-group select {
-  padding: clamp(0.7rem, 2.5vw, 0.85rem);
+  padding: clamp(0.6rem, 2vw, 0.8rem);
   border: 1px solid var(--border-color);
-  border-radius: 10px;
+  border-radius: 8px;
   width: 100%;
-  font-size: clamp(0.9rem, 3.5vw, 1rem);
-  background: rgba(255, 255, 255, 0.8);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  font-size: clamp(0.85rem, 2.5vw, 0.95rem);
+  background: rgba(255, 255, 255, 0.85);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .form-group input:focus,
@@ -227,28 +246,33 @@ h1 {
   box-shadow: var(--focus-shadow);
 }
 
+.form-group input:invalid:not(:placeholder-shown) {
+  border-color: var(--error-color);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.2);
+}
+
 /* BUTTONS */
 .submit-button {
-  padding: clamp(0.8rem, 3vw, 1rem);
+  padding: clamp(0.75rem, 2.5vw, 1rem);
   background: var(--secondary-gradient);
   color: white;
   border: none;
-  border-radius: 10px;
-  font-size: clamp(0.95rem, 3.5vw, 1.1rem);
+  border-radius: 8px;
+  font-size: clamp(0.9rem, 3vw, 1rem);
   font-weight: 600;
   cursor: pointer;
   min-height: 48px;
   box-shadow: var(--neumorphic-shadow);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .submit-button:hover {
-  transform: translateY(-3px);
-  box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.15), -6px -6px 12px rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.1), -4px -4px 10px rgba(255, 255, 255, 0.9);
 }
 
 .submit-button:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
   transform: none;
 }
@@ -259,18 +283,18 @@ h1 {
   margin: 2rem 0;
   padding: clamp(1rem, 3vw, 1.5rem);
   background: var(--card-background);
-  backdrop-filter: blur(12px);
-  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  border-radius: 14px;
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--border-color);
-  animation: fadeInUp 0.7s ease-out 0.8s both;
+  animation: fadeInUp 0.8s ease-out 0.8s both;
 }
 
 .contact-support a {
   color: var(--secondary-color);
   font-weight: 600;
   text-decoration: none;
-  transition: color 0.3s ease;
+  transition: color 0.2s ease;
 }
 
 .contact-support a:hover {
@@ -280,12 +304,12 @@ h1 {
 /* WHATSAPP */
 .whatsapp-float {
   position: fixed;
-  bottom: clamp(1.5rem, 4vw, 2rem);
-  right: clamp(1.5rem, 4vw, 2rem);
+  bottom: clamp(1rem, 3vw, 1.5rem);
+  right: clamp(1rem, 3vw, 1.5rem);
   background: var(--whatsapp-color);
   color: white;
-  width: clamp(3rem, 10vw, 3.5rem);
-  height: clamp(3rem, 10vw, 3.5rem);
+  width: clamp(2.5rem, 8vw, 3.5rem);
+  height: clamp(2.5rem, 8vw, 3.5rem);
   border-radius: 50%;
   display: flex;
   justify-content: center;
@@ -296,32 +320,32 @@ h1 {
 }
 
 .whatsapp-float:hover {
-  transform: scale(1.2);
+  transform: scale(1.15);
 }
 
 /* MODALS */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(6px);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  animation: fadeIn 0.5s ease-out;
+  animation: fadeIn 0.4s ease-out;
 }
 
 .modal {
-  background: var(--glass-background);
-  backdrop-filter: blur(14px);
-  border-radius: 16px;
-  padding: clamp(1.5rem, 4vw, 2rem);
-  max-width: clamp(300px, 90vw, 450px);
+  background: var(--card-background);
+  backdrop-filter: blur(12px);
+  border-radius: 12px;
+  padding: clamp(1.25rem, 3vw, 1.75rem);
+  max-width: clamp(280px, 85vw, 400px);
   width: 100%;
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--border-color);
-  animation: slideUp 0.5s ease-out;
+  animation: slideUp 0.4s ease-out;
 }
 
 /* PIN MODAL STYLES */
@@ -330,9 +354,9 @@ h1 {
 }
 
 .pin-instructions {
-  background: rgba(255, 255, 255, 0.25);
-  padding: clamp(0.75rem, 2.5vw, 1rem);
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.2);
+  padding: clamp(0.75rem, 2vw, 1rem);
+  border-radius: 8px;
   margin: 1rem 0;
   text-align: left;
   border: 1px solid var(--border-color);
@@ -341,20 +365,20 @@ h1 {
 .pin-instructions ol {
   margin: 0;
   padding-left: 1.25rem;
-  font-size: clamp(0.85rem, 3vw, 0.9rem);
+  font-size: clamp(0.8rem, 2.5vw, 0.9rem);
 }
 
 .check-btn {
   background: var(--secondary-gradient);
   color: white;
-  padding: clamp(0.75rem, 2.5vw, 1rem);
+  padding: clamp(0.75rem, 2vw, 1rem);
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   margin: 1rem auto;
   font-weight: 600;
   min-height: 48px;
   box-shadow: var(--neumorphic-shadow);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
 }
 
 .check-btn:hover {
@@ -362,22 +386,22 @@ h1 {
 }
 
 .timer {
-  color: #64748b;
-  font-size: clamp(0.85rem, 3vw, 0.9rem);
-  margin: 0.75rem 0;
+  color: #6b7280;
+  font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+  margin: 0.5rem 0;
 }
 
 .success-icon {
   color: var(--secondary-color);
   margin: 1rem 0;
-  font-size: clamp(2rem, 8vw, 2.5rem);
+  font-size: clamp(1.8rem, 6vw, 2.2rem);
   animation: bounce 0.5s ease-out;
 }
 
 .error-icon {
-  color: #dc2626;
+  color: var(--error-color);
   margin: 1rem 0;
-  font-size: clamp(2rem, 8vw, 2.5rem);
+  font-size: clamp(1.8rem, 6vw, 2.2rem);
   animation: shake 0.5s ease-out;
 }
 
@@ -391,20 +415,20 @@ h1 {
   display: flex;
   gap: 0.5rem;
   justify-content: center;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .toggle-btn {
-  padding: clamp(0.5rem, 2vw, 0.75rem) clamp(1rem, 3vw, 1.5rem);
+  padding: clamp(0.5rem, 2vw, 0.75rem) clamp(1rem, 3vw, 1.25rem);
   border: 2px solid var(--agent-color);
   background: transparent;
   color: var(--agent-color);
-  border-radius: 10px;
+  border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
-  font-size: clamp(0.9rem, 3.5vw, 1rem);
-  min-height: 48px;
-  transition: all 0.3s ease;
+  font-size: clamp(0.85rem, 2.5vw, 0.95rem);
+  min-height: 44px;
+  transition: all 0.2s ease;
 }
 
 .toggle-btn.active {
@@ -416,22 +440,22 @@ h1 {
 .simple-form {
   display: grid;
   grid-template-columns: 1fr;
-  gap: clamp(1rem, 3vw, 1.25rem);
-  margin: 1.5rem 0;
+  gap: clamp(0.75rem, 2.5vw, 1rem);
+  margin: 1.25rem 0;
 }
 
 .close-modal-button {
-  padding: clamp(0.75rem, 2.5vw, 1rem);
+  padding: clamp(0.75rem, 2vw, 1rem);
   background: var(--primary-gradient);
   color: white;
   border: none;
-  border-radius: 10px;
+  border-radius: 8px;
   margin-top: 1rem;
   cursor: pointer;
   font-weight: 600;
   min-height: 48px;
   box-shadow: var(--neumorphic-shadow);
-  transition: transform 0.3s ease;
+  transition: transform 0.2s ease;
 }
 
 .close-modal-button:hover {
@@ -443,9 +467,12 @@ h1 {
 }
 
 .error-message {
-  color: #dc2626;
-  font-size: clamp(0.85rem, 3vw, 0.9rem);
+  color: var(--error-color);
+  font-size: clamp(0.8rem, 2.5vw, 0.9rem);
   margin-bottom: 1rem;
+  background: rgba(220, 38, 38, 0.1);
+  padding: 0.5rem;
+  border-radius: 8px;
 }
 
 /* WHATSAPP GROUP SECTION */
@@ -454,22 +481,22 @@ h1 {
   margin: 2rem 0;
   padding: clamp(1rem, 3vw, 1.5rem);
   background: var(--card-background);
-  backdrop-filter: blur(12px);
-  border-radius: 16px;
+  backdrop-filter: blur(10px);
+  border-radius: 14px;
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--border-color);
-  animation: fadeInUp 0.7s ease-out 1s both;
+  animation: fadeInUp 0.8s ease-out 1s both;
 }
 
 .whatsapp-group-section h3 {
   color: var(--text-color);
-  font-size: clamp(1.2rem, 4vw, 1.5rem);
+  font-size: clamp(1.1rem, 3.5vw, 1.4rem);
   margin-bottom: 0.75rem;
 }
 
 .whatsapp-group-section p {
-  color: #64748b;
-  font-size: clamp(0.85rem, 3vw, 0.9rem);
+  color: #6b7280;
+  font-size: clamp(0.8rem, 2.5vw, 0.9rem);
   margin-bottom: 1.25rem;
 }
 
@@ -477,22 +504,22 @@ h1 {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  padding: clamp(0.8rem, 3vw, 1rem);
+  padding: clamp(0.75rem, 2.5vw, 1rem);
   background: var(--whatsapp-color);
   color: white;
   border: none;
-  border-radius: 10px;
-  font-size: clamp(0.95rem, 3.5vw, 1.1rem);
+  border-radius: 8px;
+  font-size: clamp(0.9rem, 3vw, 1rem);
   font-weight: 600;
   text-decoration: none;
   min-height: 48px;
   box-shadow: var(--neumorphic-shadow);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .whatsapp-group-button:hover {
-  transform: translateY(-3px);
-  box-shadow: 6px 6px 12px rgba(0, 0, 0, 0.15), -6px -6px 12px rgba(255, 255, 255, 0.9);
+  transform: translateY(-2px);
+  box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.1), -4px -4px 10px rgba(255, 255, 255, 0.9);
 }
 
 /* ANIMATIONS */
@@ -509,7 +536,7 @@ h1 {
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(15px);
   }
 
   to {
@@ -520,7 +547,7 @@ h1 {
 
 @keyframes slideInFromTop {
   from {
-    transform: translateY(-50px);
+    transform: translateY(-40px);
     opacity: 0;
   }
 
@@ -542,7 +569,7 @@ h1 {
 
 @keyframes slideUp {
   from {
-    transform: translateY(50px);
+    transform: translateY(40px);
     opacity: 0;
   }
 
@@ -560,18 +587,18 @@ h1 {
   }
 
   50% {
-    transform: scale(1.15);
+    transform: scale(1.1);
   }
 }
 
 @keyframes bounce {
   0% {
-    transform: scale(0.3);
+    transform: scale(0.4);
     opacity: 0;
   }
 
   50% {
-    transform: scale(1.2);
+    transform: scale(1.15);
   }
 
   100% {
@@ -582,12 +609,12 @@ h1 {
 
 @keyframes bounceIn {
   0% {
-    transform: scale(0.5);
+    transform: scale(0.6);
     opacity: 0;
   }
 
   50% {
-    transform: scale(1.3);
+    transform: scale(1.2);
   }
 
   100% {
@@ -605,88 +632,53 @@ h1 {
 
   20%,
   60% {
-    transform: translateX(-10px);
+    transform: translateX(-8px);
   }
 
   40%,
   80% {
-    transform: translateX(10px);
+    transform: translateX(8px);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
   }
 }
 
 /* RESPONSIVE */
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .app {
-    padding: 1rem 0.75rem;
-    margin: 1rem auto;
+    padding: clamp(0.75rem, 2.5vw, 1.5rem);
+    margin: 0.75rem auto;
+  }
+
+  .header {
+    padding: 0.75rem;
   }
 
   h1 {
-    font-size: clamp(1.8rem, 5vw, 2rem);
+    font-size: clamp(1.6rem, 4.5vw, 2.2rem);
   }
 
   .action-buttons-container {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
     gap: 0.75rem;
   }
 
-  .provider-logo-img {
-    width: clamp(70px, 20vw, 90px);
-  }
-
-  .modal {
-    padding: clamp(1rem, 3vw, 1.5rem);
-    max-width: 95vw;
-  }
-
   .purchase-form {
-    gap: 1rem;
+    max-width: 100%;
   }
 }
 
-@media (max-width: 480px) {
-  h1 {
-    font-size: clamp(1.5rem, 4.5vw, 1.8rem);
-  }
-
-  .wifi-icon {
-    font-size: clamp(1.5rem, 4vw, 1.8rem);
-  }
-
-  .action-button {
-    font-size: clamp(0.85rem, 3vw, 0.95rem);
-    padding: clamp(0.6rem, 2.5vw, 0.8rem);
-  }
-
-  .submit-button {
-    font-size: clamp(0.85rem, 3vw, 0.95rem);
-  }
-
-  .whatsapp-float {
-    width: clamp(2.5rem, 8vw, 3rem);
-    height: clamp(2.5rem, 8vw, 3rem);
-    bottom: clamp(1rem, 3vw, 1.5rem);
-    right: clamp(1rem, 3vw, 1.5rem);
-  }
-
-  .form-group label {
-    font-size: clamp(0.85rem, 3vw, 0.95rem);
-  }
-
-  .form-group input,
-  .form-group select {
-    font-size: clamp(0.85rem, 3vw, 0.95rem);
-  }
-
-  .toggle-btn {
-    font-size: clamp(0.85rem, 3vw, 0.95rem);
-    padding: clamp(0.5rem, 2vw, 0.75rem);
-  }
-}
-
-@media (max-width: 320px) {
-  .app {
-    padding: 0.75rem 0.5rem;
+@media (max-width: 768px) {
+  .action-buttons-container {
+    grid-template-columns: 1fr;
   }
 
   .provider-logo-img {
@@ -694,7 +686,77 @@ h1 {
   }
 
   .modal {
-    padding: 1rem;
+    max-width: 90vw;
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+  }
+
+  .purchase-form {
+    gap: 0.75rem;
+  }
+
+  .form-group label {
+    font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+  }
+
+  .form-group input,
+  .form-group select {
+    font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+  }
+}
+
+@media (max-width: 480px) {
+  h1 {
+    font-size: clamp(1.4rem, 4vw, 1.8rem);
+  }
+
+  .wifi-icon {
+    font-size: clamp(1.2rem, 3.5vw, 1.6rem);
+  }
+
+  .action-button {
+    font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+    padding: clamp(0.6rem, 2vw, 0.8rem);
+    min-height: 44px;
+  }
+
+  .submit-button {
+    font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+  }
+
+  .whatsapp-float {
+    width: clamp(2.2rem, 7vw, 3rem);
+    height: clamp(2.2rem, 7vw, 3rem);
+    bottom: clamp(0.75rem, 2.5vw, 1rem);
+    right: clamp(0.75rem, 2.5vw, 1rem);
+  }
+
+  .toggle-btn {
+    font-size: clamp(0.8rem, 2.5vw, 0.9rem);
+    padding: clamp(0.4rem, 1.5vw, 0.6rem) clamp(0.75rem, 2.5vw, 1rem);
+    min-height: 40px;
+  }
+
+  .modal {
+    max-width: 95vw;
+  }
+}
+
+@media (max-width: 320px) {
+  .app {
+    padding: 0.5rem;
+  }
+
+  .provider-logo-img {
+    width: clamp(50px, 16vw, 70px);
+  }
+
+  .modal {
+    padding: 0.75rem;
     max-width: 98vw;
+  }
+
+  .pin-instructions ol {
+    padding-left: 1rem;
+    font-size: clamp(0.75rem, 2vw, 0.85rem);
   }
 }
