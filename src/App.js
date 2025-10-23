@@ -80,18 +80,18 @@ const providersData = {
     { gb: 100, price: 450.0 },
   ],
   mtn: [
-    { gb: 1, price: 7.0 },
+    { gb: 1, price: 6.0 },
     { gb: 2, price: 11.5 },
-    { gb: 3, price: 17.5 },
-    { gb: 4, price: 23.0 },
-    { gb: 5, price: 28.0 },
-    { gb: 6, price: 35.0 },
-    { gb: 8, price: 43.0 },
-    { gb: 10, price: 52.0 },
-    { gb: 15, price: 75.0 },
-    { gb: 20, price: 93.0 },
+    { gb: 3, price: 16.5 },
+    { gb: 4, price: 21.0 },
+    { gb: 5, price: 26.5 },
+    { gb: 6, price: 30.0 },
+    { gb: 8, price: 42.0 },
+    { gb: 10, price: 48.0 },
+    { gb: 15, price: 70.0 },
+    { gb: 20, price: 89.0 },
     { gb: 25, price: 115.0 },
-    { gb: 30, price: 140.0 },
+    { gb: 30, price: 130.0 },
     { gb: 40, price: 180.0 },
     { gb: 50, price: 220.0 },
   ],
@@ -129,20 +129,24 @@ function App() {
   const [isAgentSignup, setIsAgentSignup] = useState(false); // Added back
   const statusCache = useRef(new Map());
   const timeoutRef = useRef(null);
-  const initiateThetellerPayment = useCallback(
-    httpsCallable(functions, "initiateThetellerPayment"),
+  const startThetellerPayment = useCallback(
+    httpsCallable(functions, "startThetellerPayment"),
     []
   );
 
   const providerLogos = { mtn, airtel, telecel }; // Added back
 
   const formatPhoneNumber = useCallback((phone) => {
-    if (phone.startsWith("0") && phone.length === 10)
-      return `233${phone.slice(1)}`;
-    if (phone.startsWith("233") && phone.length === 13) return phone;
-    return `233${phone}`;
+    let formatted = phone;
+    if (phone.startsWith("0") && phone.length === 10) {
+      formatted = `233${phone.slice(1)}`;
+    } else if (phone.startsWith("233") && phone.length === 12) {
+      formatted = phone;
+    } else {
+      formatted = `233${phone}`;
+    }
+    return formatted;
   }, []);
-
   const closeModal = () => {
     setModalIsOpen(false);
     setPurchaseDetails(null);
@@ -207,7 +211,7 @@ function App() {
 
     try {
       console.log(`Checking status for transaction ${transactionId}`);
-      const result = await initiateThetellerPayment({
+      const result = await startThetellerPayment({
         transaction_id: transactionId,
         isCallback: true,
       });
@@ -254,7 +258,7 @@ function App() {
     agentSignUpDetails,
     currentUser,
     formatPhoneNumber,
-    initiateThetellerPayment,
+    startThetellerPayment,
     isAgentSignup,
     navigate,
   ]);
@@ -309,7 +313,7 @@ function App() {
         transactionId,
         recipientPhoneNumber,
       });
-      const result = await initiateThetellerPayment({
+      const result = await startThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: `${
@@ -397,7 +401,7 @@ function App() {
 
     try {
       console.log("Initiating agent signup payment:", { transactionId });
-      const result = await initiateThetellerPayment({
+      const result = await startThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: JSON.stringify(agentDetails),
@@ -454,53 +458,67 @@ function App() {
 
   const handleCheckData = async (e) => {
     e.preventDefault();
+
+    // Validate phone number (10 digits to match UI pattern)
     if (!/^\d{10}$/.test(dataPhoneNumber)) {
+      closeCheckDataModal();
       setErrorMessage("Please enter a valid 10-digit phone or MoMo number.");
       return;
     }
 
+    // Format phone number to match Firestore (e.g., "233537113751")
     const formattedPhone = formatPhoneNumber(dataPhoneNumber);
+    
     try {
+      // Query data_approve_teller_transaction collection
       let q = query(
-        collection(db, "approve_teller_transaction"),
+        collection(db, "data_approve_teller_transaction"),
         where("recipient_number", "==", formattedPhone)
       );
       let snapshot = await getDocs(q);
+      console.log(
+        `[DEBUG] Recipient number query returned `
+      );
 
+      // If no match, try subscriber_number
       if (snapshot.empty) {
         q = query(
-          collection(db, "approve_teller_transaction"),
+          collection(db, "data_approve_teller_transaction"),
           where("subscriber_number", "==", formattedPhone)
         );
         snapshot = await getDocs(q);
+        
       }
 
       if (snapshot.empty) {
-        setErrorMessage(`No data bundle found for ${dataPhoneNumber}`);
         closeCheckDataModal();
+        setErrorMessage(`No data bundle found for ${dataPhoneNumber}`);
         return;
       }
 
-      const data = snapshot.docs[0].data();
-      let message = "";
+      // Check the first matching document
+      const doc = snapshot.docs[0];
+      const data = doc.data();
 
-      switch (data.status) {
-        case "approved":
-          message = data.exported
-            ? `✅ Data ACTIVATED! ${data.desc}`
-            : `✅ Payment approved! ⏳ Data processing...`;
-          break;
-        case "declined":
-          message = `❌ Payment declined: ${data.reason || "Unknown reason"}`;
-          break;
-        default:
-          message = `Status: ${data.status}`;
+      let message = "";
+      if (data.status === "approved") {
+        if (data.exported === true) {
+          message =
+            "Data is being processed and will be delivered in 10 minutes.";
+        } else {
+          message = "Data not processed.";
+        }
+      } else if (data.status === "declined") {
+        message = `❌ Payment declined: ${data.reason || "Unknown reason"}`;
+      } else {
+        message = `Status: ${data.status}`;
       }
 
-      setErrorMessage(message);
       closeCheckDataModal();
+      setErrorMessage(message);
+      
     } catch (error) {
-      console.error("Data check error:", error);
+      closeCheckDataModal();
       setErrorMessage(`Error checking status: ${error.message}`);
     }
   };
@@ -537,7 +555,7 @@ function App() {
           animate={{ opacity: 1, y: 0 }}
         >
           <FaWifi className="wifi-icon" />
-          <h1>Lord's Data</h1>
+          <h1>Ricky's Data</h1>
         </motion.div>
         <motion.p
           initial={{ opacity: 0 }}
@@ -590,7 +608,7 @@ function App() {
       <motion.section className="purchase-form-container">
         <h2>Purchase Data Bundle</h2>
         <p className="disclaimer-message">
-          Data credited within 5 mins - 4 hours
+          Data will be credited within 5 mins - 4 hours
         </p>
         <form onSubmit={handlePurchase} className="purchase-form">
           <div className="form-group">
@@ -691,7 +709,7 @@ function App() {
       <motion.section className="contact-support">
         <h3>Need Help?</h3>
         <p>
-          Contact <a href="tel:0240964167">0240964167</a>
+          Contact <a href="tel:0549856098">0549856098</a>
         </p>
       </motion.section>
 
@@ -702,7 +720,7 @@ function App() {
           WhatsApp group!
         </p>
         <motion.a
-          href="https://chat.whatsapp.com/E7iqqHV9RgpBcyXeEnRMQP"
+          href="https://chat.whatsapp.com/DzhMD7hQJViDzimBzjQIZg?mode=wwt"
           className="whatsapp-group-button"
           whileHover={{ scale: 1.05 }}
           target="_blank"
@@ -713,7 +731,7 @@ function App() {
       </motion.section>
 
       <motion.a
-        href="https://wa.me/233240964167"
+        href="https://wa.me/233549856098"
         className="whatsapp-float"
         whileHover={{ scale: 1.1 }}
       >

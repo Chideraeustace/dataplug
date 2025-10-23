@@ -18,7 +18,7 @@ const formatPhoneNumber = (phone) => {
   return `233${phone}`;
 };
 
-exports.initiateThetellerPayment = onCall(
+exports.startThetellerPayment = onCall(
   {timeoutSeconds: 120},
   async ({data, auth}) => {
     logger.info("Received payload:", {
@@ -167,7 +167,7 @@ exports.initiateThetellerPayment = onCall(
 
     // Check for duplicate transaction
     const existingDoc = await db
-      .collection("approve_teller_transaction")
+      .collection("data_approve_teller_transaction")
       .doc(transaction_id)
       .get();
     if (existingDoc.exists) {
@@ -247,7 +247,7 @@ exports.initiateThetellerPayment = onCall(
           });
 
           // Store agent details in Firestore
-          await db.collection("lords-agents").doc(userRecord.uid).set({
+          await db.collection("dataplug-agents").doc(userRecord.uid).set({
             fullName,
             phone: formattedAgentPhone,
             momoNumber,
@@ -271,7 +271,7 @@ exports.initiateThetellerPayment = onCall(
 
       // Store approved transaction in Firestore
       await db
-        .collection("approve_teller_transaction")
+        .collection("data_approve_teller_transaction")
         .doc(transaction_id)
         .set({
           merchant_id,
@@ -286,7 +286,7 @@ exports.initiateThetellerPayment = onCall(
             null :
             formatPhoneNumber(recipient_number || subscriber_number),
           r_switch,
-          email: email || "customer@lordsdata.com",
+          email: email || "customer@data.com",
           isAgentSignup,
           exported: false,
           userId: userId || null, // Add userId

@@ -85,13 +85,13 @@ const publicProvidersData = {
     { gb: 5, price: 26.5 },
     { gb: 6, price: 33.5 },
     { gb: 8, price: 41.5 },
-    { gb: 10, price: 51.0 },
+    { gb: 10, price: 45.0 },
     { gb: 15, price: 74.0 },
     { gb: 20, price: 92.0 },
     { gb: 25, price: 113.0 },
     { gb: 30, price: 139.0 },
     { gb: 40, price: 178.0 },
-    { gb: 50, price: 218.0 },
+    { gb: 50, price: 207.0 },
     { gb: 100, price: 428.0 },
   ],
 };
@@ -139,8 +139,8 @@ function AgentPortal() {
   const [countdown, setCountdown] = useState(null);
   const statusCache = useRef(new Map());
   const timeoutRef = useRef(null);
-  const initiateThetellerPayment = useCallback(
-    httpsCallable(functions, "initiateThetellerPayment"),
+  const startThetellerPayment = useCallback(
+    httpsCallable(functions, "startThetellerPayment"),
     []
   );
 
@@ -230,7 +230,7 @@ function AgentPortal() {
 
     try {
       console.log(`Checking status for transaction ${purchaseDetails.transid}`);
-      const result = await initiateThetellerPayment({
+      const result = await startThetellerPayment({
         transaction_id: purchaseDetails.transid,
         isCallback: true,
       });
@@ -259,13 +259,13 @@ function AgentPortal() {
       );
       setErrorMessage(`Failed to check payment status: ${error.message}`);
     }
-  }, [purchaseDetails, initiateThetellerPayment]);
+  }, [purchaseDetails, startThetellerPayment]);
 
   const fetchAgentTransactions = async (userId) => {
     try {
       setLoading(true);
       const q = query(
-        collection(db, "approve_teller_transaction"),
+        collection(db, "data_approve_teller_transaction"),
         where("userId", "==", userId)
       );
       const querySnapshot = await getDocs(q);
@@ -284,7 +284,7 @@ function AgentPortal() {
 
   const fetchAgentProfile = async (userId) => {
     try {
-      const agentDoc = await getDoc(doc(db, "lords-agents", userId));
+      const agentDoc = await getDoc(doc(db, "dataplug-agents", userId));
       if (agentDoc.exists()) {
         const data = agentDoc.data();
         setAgentFullName(data.fullName);
@@ -308,7 +308,7 @@ function AgentPortal() {
       return;
     }
     try {
-      await updateDoc(doc(db, "lords-agents", currentUser.uid), {
+      await updateDoc(doc(db, "dataplug-agents", currentUser.uid), {
         fullName: agentFullName,
         phone: agentPhone,
         username: agentUsername,
@@ -376,7 +376,7 @@ function AgentPortal() {
         momoPhoneNumber,
         paymentProvider,
       });
-      const response = await initiateThetellerPayment({
+      const response = await startThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: `${
@@ -453,7 +453,7 @@ function AgentPortal() {
     const formattedPhone = formatPhoneNumber(dataPhoneNumber);
     try {
       let q = query(
-        collection(db, "approve_teller_transaction"),
+        collection(db, "data_approve_teller_transaction"),
         where("recipient_number", "==", formattedPhone) // Updated to check recipient_number
       );
       let snapshot = await getDocs(q);
@@ -518,7 +518,7 @@ function AgentPortal() {
         >
           <div className="title-with-icon">
             <FaUserShield className="agent-icon" aria-hidden="true" />
-            <h1>Agent Portal - Lord's Data</h1>
+            <h1>Agent Portal - Data Plug</h1>
           </div>
           {currentUser && (
             <p className="welcome-message">

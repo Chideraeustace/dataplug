@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://lordsdata.xyz/sitemap.xml
+Sitemap: https://rickysdata.xyz/sitemap.xml
