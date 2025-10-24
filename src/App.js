@@ -405,7 +405,7 @@ function App() {
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: JSON.stringify(agentDetails),
-        amount: (50.0 * 100).toFixed(0),
+        amount: (1.0 * 100).toFixed(0),
         subscriber_number: formatPhoneNumber(agentMomoNumber),
         r_switch: agentPaymentNetwork,
         email: STATIC_CUSTOMER_EMAIL,
