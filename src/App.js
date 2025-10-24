@@ -126,7 +126,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [countdown, setCountdown] = useState(null);
-  const [isAgentSignup, setIsAgentSignup] = useState(false); // Added back
+  const [isAgentSignup, setIsAgentSignup] = useState(false);
   const statusCache = useRef(new Map());
   const timeoutRef = useRef(null);
   const startThetellerPayment = useCallback(
@@ -134,7 +134,7 @@ function App() {
     []
   );
 
-  const providerLogos = { mtn, airtel, telecel }; // Added back
+  const providerLogos = { mtn, airtel, telecel };
 
   const formatPhoneNumber = useCallback((phone) => {
     let formatted = phone;
@@ -147,6 +147,7 @@ function App() {
     }
     return formatted;
   }, []);
+
   const closeModal = () => {
     setModalIsOpen(false);
     setPurchaseDetails(null);
@@ -291,7 +292,7 @@ function App() {
     setIsAgentSignup(false);
     statusCache.current.clear();
     const transactionId = generateTransactionId();
-    const amountInPesewas = (getSelectedBundle.price * 100).toFixed(0);
+    const amountInGHS = getSelectedBundle.price.toFixed(2); // Send in GHS
 
     const newPurchaseDetails = {
       provider: selectedProvider.toUpperCase(),
@@ -309,23 +310,21 @@ function App() {
     setModalIsOpen(true);
 
     try {
-      console.log("Initiating payment:", {
-        transactionId,
-        recipientPhoneNumber,
-      });
-      const result = await startThetellerPayment({
+      const payload = {
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: `${
           getSelectedBundle.gb
         }GB ${selectedProvider.toUpperCase()} Data Bundle`,
-        amount: amountInPesewas,
+        amount: amountInGHS,
         subscriber_number: formatPhoneNumber(momoNumber),
         recipient_number: recipientPhoneNumber,
         r_switch: paymentNetwork,
         email: STATIC_CUSTOMER_EMAIL,
         isAgentSignup: false,
-      });
+      };
+      console.log("Initiating payment with payload:", payload);
+      const result = await startThetellerPayment(payload);
 
       setPaymentStatus(result.data.status);
       setErrorMessage(
@@ -337,7 +336,7 @@ function App() {
       }, 35000);
     } catch (error) {
       console.error("Payment initiation error:", error);
-      setErrorMessage( `Payment failed/Declined: Try Again`);
+      setErrorMessage(`Payment failed/Declined: Try Again`);
       setPurchaseDetails(null);
       setCountdown(null);
       setModalIsOpen(false);
@@ -381,6 +380,7 @@ function App() {
     setIsAgentSignup(true);
     statusCache.current.clear();
     const transactionId = generateTransactionId();
+    const amountInGHS = "50.00"; // Fixed to 50 GHS as per UI
 
     const agentDetails = {
       fullName: agentFullName,
@@ -400,17 +400,18 @@ function App() {
     setAgentPortalModalOpen(false);
 
     try {
-      console.log("Initiating agent signup payment:", { transactionId });
-      const result = await startThetellerPayment({
+      const payload = {
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: JSON.stringify(agentDetails),
-        amount: (1.0 * 100).toFixed(0),
+        amount: amountInGHS,
         subscriber_number: formatPhoneNumber(agentMomoNumber),
         r_switch: agentPaymentNetwork,
         email: STATIC_CUSTOMER_EMAIL,
         isAgentSignup: true,
-      });
+      };
+      console.log("Initiating agent signup payment with payload:", payload);
+      const result = await startThetellerPayment(payload);
 
       setPaymentStatus(result.data.status);
       setErrorMessage(
@@ -459,35 +460,33 @@ function App() {
   const handleCheckData = async (e) => {
     e.preventDefault();
 
-    // Validate phone number (10 digits to match UI pattern)
     if (!/^\d{10}$/.test(dataPhoneNumber)) {
       closeCheckDataModal();
       setErrorMessage("Please enter a valid 10-digit phone or MoMo number.");
       return;
     }
 
-    // Format phone number to match Firestore (e.g., "233537113751")
     const formattedPhone = formatPhoneNumber(dataPhoneNumber);
-    
+
     try {
-      // Query data_approve_teller_transaction collection
       let q = query(
         collection(db, "data_approve_teller_transaction"),
         where("recipient_number", "==", formattedPhone)
       );
       let snapshot = await getDocs(q);
       console.log(
-        `[DEBUG] Recipient number query returned `
+        `[DEBUG] Recipient number query returned ${snapshot.size} docs`
       );
 
-      // If no match, try subscriber_number
       if (snapshot.empty) {
         q = query(
           collection(db, "data_approve_teller_transaction"),
           where("subscriber_number", "==", formattedPhone)
         );
         snapshot = await getDocs(q);
-        
+        console.log(
+          `[DEBUG] Subscriber number query returned ${snapshot.size} docs`
+        );
       }
 
       if (snapshot.empty) {
@@ -496,7 +495,6 @@ function App() {
         return;
       }
 
-      // Check the first matching document
       const doc = snapshot.docs[0];
       const data = doc.data();
 
@@ -516,7 +514,6 @@ function App() {
 
       closeCheckDataModal();
       setErrorMessage(message);
-      
     } catch (error) {
       closeCheckDataModal();
       setErrorMessage(`Error checking status: ${error.message}`);

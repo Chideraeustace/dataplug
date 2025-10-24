@@ -1,5 +1,5 @@
-const {onCall, HttpsError} = require("firebase-functions/v2/https");
-const {logger} = require("firebase-functions/v2");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { logger } = require("firebase-functions/v2");
 const axios = require("axios");
 const admin = require("firebase-admin");
 
@@ -12,15 +12,15 @@ const formatPhoneNumber = (phone) => {
   if (phone.startsWith("0") && phone.length === 10) {
     return `233${phone.slice(1)}`;
   }
-  if (phone.startsWith("233") && phone.length === 13) {
+  if (phone.startsWith("233") && phone.length === 12) {
     return phone;
   }
   return `233${phone}`;
 };
 
 exports.startThetellerPayment = onCall(
-  {timeoutSeconds: 120},
-  async ({data, auth}) => {
+  { timeoutSeconds: 120 },
+  async ({ data, auth }) => {
     logger.info("Received payload:", {
       ...data,
       recipient_number: data.recipient_number || "none",
@@ -38,13 +38,13 @@ exports.startThetellerPayment = onCall(
       email,
       isAgentSignup = false,
       isCallback = false,
+      agentDetails, // Optional field for agent details
     } = data;
 
-    const userId = auth?.uid; // Get userId from auth context
+    const userId = auth?.uid;
 
     // Handle transaction status check
     if (isCallback) {
-      // Check Firestore cache first
       const statusDoc = await db
         .collection("transaction_status_cache")
         .doc(transaction_id)
@@ -77,7 +77,7 @@ exports.startThetellerPayment = onCall(
           }
         );
 
-        const {status, code, reason} = response.data;
+        const { status, code, reason } = response.data;
         logger.info("Theteller status check response:", {
           status,
           code,
@@ -85,7 +85,6 @@ exports.startThetellerPayment = onCall(
           transaction_id,
         });
 
-        // Cache the status in Firestore (only for approved or declined)
         if (status === "approved" || status === "declined") {
           await db
             .collection("transaction_status_cache")
@@ -108,6 +107,7 @@ exports.startThetellerPayment = onCall(
       } catch (error) {
         logger.error("Theteller status check error:", {
           message: error.message,
+          response: error.response?.data,
           transaction_id,
         });
         throw new HttpsError(
@@ -131,7 +131,10 @@ exports.startThetellerPayment = onCall(
       );
     }
     if (!desc || typeof desc !== "string") {
-      throw new HttpsError("invalid-argument", "Description required");
+      throw new HttpsError(
+        "invalid-argument",
+        `Description must be a string, received: ${desc}`
+      );
     }
     if (!amount || isNaN(amount) || parseFloat(amount) <= 0) {
       throw new HttpsError("invalid-argument", "Valid amount required");
@@ -139,7 +142,7 @@ exports.startThetellerPayment = onCall(
     if (!subscriber_number || !/^\d{10,12}$/.test(subscriber_number)) {
       throw new HttpsError(
         "invalid-argument",
-        `Valid MoMo number (10 or 13 digits) required, received: ${subscriber_number}`
+        `Valid MoMo number (10 or 12 digits) required, received: ${subscriber_number}`
       );
     }
     if (
@@ -150,7 +153,7 @@ exports.startThetellerPayment = onCall(
     ) {
       throw new HttpsError(
         "invalid-argument",
-        `Valid recipient number (10 or 13 digits) required for data purchase, received: ${
+        `Valid recipient number (10 or 12 digits) required for data purchase, received: ${
           recipient_number || "none"
         }`
       );
@@ -165,6 +168,95 @@ exports.startThetellerPayment = onCall(
       );
     }
 
+    // Extract agent details from desc or agentDetails for agent signup
+    let parsedAgentDetails = {};
+    let thetellerDesc = desc; // Default desc for Theteller
+    if (isAgentSignup) {
+      try {
+        // Try parsing desc as JSON for agent details
+        parsedAgentDetails = JSON.parse(desc);
+        const {
+          email,
+          password,
+          fullName,
+          phone,
+          momoNumber,
+          paymentNetwork,
+          username,
+        } = parsedAgentDetails;
+        if (
+          !email ||
+          !password ||
+          !fullName ||
+          !phone ||
+          !momoNumber ||
+          !paymentNetwork ||
+          !username
+        ) {
+          throw new HttpsError(
+            "invalid-argument",
+            "Agent details in desc must include email, password, fullName, phone, momoNumber, paymentNetwork, and username"
+          );
+        }
+        // Craft a new, short desc for Theteller
+        thetellerDesc = `Agent Signup for ${fullName}`.substring(0, 100);
+      } catch (error) {
+        // If desc parsing fails, check for agentDetails
+        if (!agentDetails) {
+          throw new HttpsError(
+            "invalid-argument",
+            `Invalid desc format or missing agentDetails for agent signup: ${error.message}`
+          );
+        }
+        try {
+          parsedAgentDetails =
+            typeof agentDetails === "string"
+              ? JSON.parse(agentDetails)
+              : agentDetails;
+          const {
+            email,
+            password,
+            fullName,
+            phone,
+            momoNumber,
+            paymentNetwork,
+            username,
+          } = parsedAgentDetails;
+          if (
+            !email ||
+            !password ||
+            !fullName ||
+            !phone ||
+            !momoNumber ||
+            !paymentNetwork ||
+            !username
+          ) {
+            throw new HttpsError(
+              "invalid-argument",
+              "Agent details must include email, password, fullName, phone, momoNumber, paymentNetwork, and username"
+            );
+          }
+          // Use provided desc or craft a new one
+          thetellerDesc =
+            desc.length <= 100
+              ? desc
+              : `Agent Signup for ${fullName}`.substring(0, 100);
+        } catch (agentError) {
+          throw new HttpsError(
+            "invalid-argument",
+            `Invalid agent details format: ${agentError.message}`
+          );
+        }
+      }
+      // Validate thetellerDesc length
+      if (thetellerDesc.length > 100) {
+        throw new HttpsError(
+          "invalid-argument",
+          `Theteller description must be ≤100 characters, received: ${thetellerDesc} (${thetellerDesc.length} characters)`
+        );
+      }
+    }
+
     // Check for duplicate transaction
     const existingDoc = await db
       .collection("data_approve_teller_transaction")
@@ -174,26 +266,30 @@ exports.startThetellerPayment = onCall(
       logger.warn(`Transaction ${transaction_id} already exists`);
       return {
         status: "approved",
-        message: isAgentSignup ?
-          "Agent registration payment already processed" :
-          "Data purchase payment already processed",
+        message: isAgentSignup
+          ? "Agent registration payment already processed"
+          : "Data purchase payment already processed",
         transaction_id,
       };
     }
 
-    const formattedAmount = parseFloat(amount).toFixed(0).padStart(12, "0");
+    // Convert amount (in GHS) to pesewas and pad to 12 digits
+    const formattedAmount = (parseFloat(amount) * 100)
+      .toFixed(0)
+      .padStart(12, "0");
 
     const requestBody = {
       amount: formattedAmount,
       processing_code: "000200",
       transaction_id,
-      desc,
+      desc: thetellerDesc, // Use new desc for Theteller
       merchant_id,
-      subscriber_number,
+      subscriber_number: formatPhoneNumber(subscriber_number),
       "r-switch": r_switch,
     };
 
     try {
+      logger.info("Sending to Theteller:", { requestBody });
       const response = await axios.post(
         "https://prod.theteller.net/v1.1/transaction/process",
         requestBody,
@@ -223,10 +319,8 @@ exports.startThetellerPayment = onCall(
         );
       }
 
-      let agentDetails = {};
       if (isAgentSignup) {
         try {
-          agentDetails = JSON.parse(desc);
           const {
             email,
             password,
@@ -234,9 +328,8 @@ exports.startThetellerPayment = onCall(
             phone,
             momoNumber,
             paymentNetwork,
-          } = agentDetails;
-
-          // Format phone number for agent
+            username,
+          } = parsedAgentDetails;
           const formattedAgentPhone = formatPhoneNumber(phone);
 
           // Create Firebase Auth user
@@ -253,7 +346,7 @@ exports.startThetellerPayment = onCall(
             momoNumber,
             paymentNetwork,
             email,
-            username: agentDetails.username,
+            username,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
 
@@ -280,17 +373,18 @@ exports.startThetellerPayment = onCall(
           status: responseData.status,
           code: responseData.code,
           reason: responseData.reason,
-          desc,
-          subscriber_number,
-          recipient_number: isAgentSignup ?
-            null :
-            formatPhoneNumber(recipient_number || subscriber_number),
+          desc, // Store original desc
+          subscriber_number: formatPhoneNumber(subscriber_number),
+          recipient_number: isAgentSignup
+            ? null
+            : formatPhoneNumber(recipient_number || subscriber_number),
           r_switch,
           email: email || "customer@data.com",
           isAgentSignup,
           exported: false,
-          userId: userId || null, // Add userId
+          userId: userId || null,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          agentDetails: isAgentSignup ? parsedAgentDetails : null,
         });
 
       logger.info(
@@ -303,14 +397,15 @@ exports.startThetellerPayment = onCall(
 
       return {
         status: "approved",
-        message: isAgentSignup ?
-          "Agent registration payment approved" :
-          "Data purchase payment approved",
+        message: isAgentSignup
+          ? "Agent registration payment approved"
+          : "Data purchase payment approved",
         transaction_id,
       };
     } catch (error) {
       logger.error("Theteller initiation error:", {
         message: error.message,
+        response: error.response?.data,
         transaction_id,
       });
       throw new HttpsError(

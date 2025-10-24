@@ -355,6 +355,52 @@
     background: rgba(16, 185, 129, 0.1);
 }
 
+/* Add to existing AgentPortal.css */
+.referral-section {
+    background: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.referral-link-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+}
+
+.referral-link-input {
+    flex: 1;
+    padding: 10px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #f9f9f9;
+}
+
+.copy-button {
+    background: #007bff;
+    color: #fff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.copy-button:hover {
+    background: #0056b3;
+}
+
+.referral-info {
+    color: #555;
+    font-size: 0.9rem;
+}
+
 /* ANIMATIONS */
 @keyframes pulse {
 

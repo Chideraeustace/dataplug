@@ -17,6 +17,7 @@ import {
   FaCheckCircle,
   FaSpinner,
   FaTimesCircle,
+  FaLink, // Added for referral link icon
 } from "react-icons/fa";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import {
@@ -121,8 +122,8 @@ function AgentPortal() {
   const [selectedProvider, setSelectedProvider] = useState("airtel");
   const [selectedBundleSize, setSelectedBundleSize] = useState("1");
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
-  const [momoPhoneNumber, setMomoPhoneNumber] = useState(""); // Added for MoMo number
-  const [paymentProvider, setPaymentProvider] = useState("mtn"); // Added for payment network
+  const [momoPhoneNumber, setMomoPhoneNumber] = useState("");
+  const [paymentProvider, setPaymentProvider] = useState("mtn");
   const [purchaseDetails, setPurchaseDetails] = useState(null);
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [dataPhoneNumber, setDataPhoneNumber] = useState("");
@@ -137,6 +138,8 @@ function AgentPortal() {
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [countdown, setCountdown] = useState(null);
+  const [referralLink, setReferralLink] = useState(""); // Added for referral link// Referral link state
+  const [isReferralLoading, setIsReferralLoading] = useState(true);
   const statusCache = useRef(new Map());
   const timeoutRef = useRef(null);
   const startThetellerPayment = useCallback(
@@ -169,6 +172,34 @@ function AgentPortal() {
     return `233${phone}`;
   }, []);
 
+  // Generate referral link
+  const generateReferralLink = useCallback(() => {
+    if (currentUser?.uid) {
+      const baseUrl = window.location.origin;
+      const link = `${baseUrl}/customer-purchase/${currentUser.uid}`;
+      setReferralLink(link);
+      setIsReferralLoading(false);
+    } else {
+      setIsReferralLoading(true);
+    }
+  }, [currentUser]);
+
+  // Copy referral link to clipboard
+  const copyReferralLink = useCallback(async () => {
+    if (!referralLink || typeof referralLink !== "string") {
+      setErrorMessage("Referral link is not available. Please try again.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.write(referralLink);
+      setErrorMessage("Referral link copied to clipboard!");
+    } catch (error) {
+      console.error("Failed to copy referral link:", error);
+      setErrorMessage("Failed to copy link. Please copy it manually.");
+    }
+  }, [referralLink]);
+
   // Countdown timer effect
   useEffect(() => {
     if (countdown === null) return;
@@ -182,19 +213,20 @@ function AgentPortal() {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  // Auth state
+  // Auth state and referral link generation
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
         fetchAgentTransactions(user.uid);
         fetchAgentProfile(user.uid);
+        generateReferralLink(); // Generate referral link on auth
       } else {
         navigate("/");
       }
     });
     return () => unsubscribe();
-  }, [navigate]);
+  }, [navigate, generateReferralLink]);
 
   // Reset bundle size when provider changes
   useEffect(() => {
@@ -220,28 +252,17 @@ function AgentPortal() {
 
     if (statusCache.current.has(purchaseDetails.transid)) {
       const cachedStatus = statusCache.current.get(purchaseDetails.transid);
-      console.log(
-        `Using cached status for ${purchaseDetails.transid}:`,
-        cachedStatus
-      );
       setPaymentStatus(cachedStatus.final_status);
       return;
     }
 
     try {
-      console.log(`Checking status for transaction ${purchaseDetails.transid}`);
       const result = await startThetellerPayment({
         transaction_id: purchaseDetails.transid,
         isCallback: true,
       });
 
       const { final_status, code, reason } = result.data;
-      console.log(`Received status for ${purchaseDetails.transid}:`, {
-        final_status,
-        code,
-        reason,
-      });
-
       statusCache.current.set(purchaseDetails.transid, {
         final_status,
         code,
@@ -253,10 +274,6 @@ function AgentPortal() {
         setErrorMessage(`Payment declined: ${reason || "Unknown reason"}`);
       }
     } catch (error) {
-      console.error(
-        `Status check error for ${purchaseDetails.transid}:`,
-        error
-      );
       setErrorMessage(`Failed to check payment status: ${error.message}`);
     }
   }, [purchaseDetails, startThetellerPayment]);
@@ -275,7 +292,6 @@ function AgentPortal() {
       }));
       setTransactions(transactionsData);
     } catch (error) {
-      console.error("Error fetching transactions:", error);
       setErrorMessage("Failed to load transactions.");
     } finally {
       setLoading(false);
@@ -292,7 +308,6 @@ function AgentPortal() {
         setAgentUsername(data.username);
       }
     } catch (error) {
-      console.error("Error fetching agent profile:", error);
       setErrorMessage("Failed to load profile.");
     }
   };
@@ -329,7 +344,6 @@ function AgentPortal() {
       await signOut(auth);
       navigate("/");
     } catch (error) {
-      console.error("Sign out error:", error);
       setErrorMessage("Failed to sign out.");
     }
   };
@@ -358,9 +372,9 @@ function AgentPortal() {
       provider: selectedProvider.toUpperCase(),
       gb: getSelectedBundle.gb,
       price: getSelectedBundle.price,
-      recipientNumber: recipientPhoneNumber, // Updated to distinguish from MoMo number
-      momoNumber: momoPhoneNumber, // Added for MoMo number
-      paymentProvider: paymentProvider.toUpperCase(), // Added for payment network
+      recipientNumber: recipientPhoneNumber,
+      momoNumber: momoPhoneNumber,
+      paymentProvider: paymentProvider.toUpperCase(),
       transid: transactionId,
     };
 
@@ -370,12 +384,6 @@ function AgentPortal() {
     setModalIsOpen(true);
 
     try {
-      console.log("Initiating payment:", {
-        transactionId,
-        recipientPhoneNumber,
-        momoPhoneNumber,
-        paymentProvider,
-      });
       const response = await startThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
@@ -383,9 +391,9 @@ function AgentPortal() {
           getSelectedBundle.gb
         }GB ${selectedProvider.toUpperCase()} Data Bundle`,
         amount: amountInPesewas,
-        subscriber_number: formatPhoneNumber(momoPhoneNumber), // Use MoMo number
-        recipient_number: formatPhoneNumber(recipientPhoneNumber), // Use recipient number
-        r_switch: getRSwitch, // Use payment network
+        subscriber_number: formatPhoneNumber(momoPhoneNumber),
+        recipient_number: formatPhoneNumber(recipientPhoneNumber),
+        r_switch: getRSwitch,
         email: STATIC_CUSTOMER_EMAIL,
         isAgentSignup: false,
       });
@@ -397,13 +405,10 @@ function AgentPortal() {
 
       timeoutRef.current = setTimeout(() => {
         checkPaymentStatus();
-        fetchAgentTransactions(currentUser.uid); // Refresh transactions after check
+        fetchAgentTransactions(currentUser.uid);
       }, 35000);
     } catch (error) {
-      console.error("Payment initiation error:", error);
-      setErrorMessage(
-        `Payment failed: ${error.message}`
-      );
+      setErrorMessage(`Payment failed: ${error.message}`);
       setPurchaseDetails(null);
       setCountdown(null);
       setModalIsOpen(false);
@@ -417,8 +422,8 @@ function AgentPortal() {
     setPurchaseDetails(null);
     setPaymentStatus(null);
     setRecipientPhoneNumber("");
-    setMomoPhoneNumber(""); // Reset MoMo number
-    setPaymentProvider("mtn"); // Reset payment network
+    setMomoPhoneNumber("");
+    setPaymentProvider("mtn");
     setSelectedProvider("airtel");
     setSelectedBundleSize("1");
     setErrorMessage("");
@@ -454,14 +459,14 @@ function AgentPortal() {
     try {
       let q = query(
         collection(db, "data_approve_teller_transaction"),
-        where("recipient_number", "==", formattedPhone) // Updated to check recipient_number
+        where("recipient_number", "==", formattedPhone)
       );
       let snapshot = await getDocs(q);
 
       if (snapshot.empty) {
         q = query(
           collection(db, "theteller-transactions"),
-          where("recipient_number", "==", formattedPhone) // Updated to check recipient_number
+          where("recipient_number", "==", formattedPhone)
         );
         snapshot = await getDocs(q);
       }
@@ -546,6 +551,13 @@ function AgentPortal() {
             aria-label="Purchase Data Bundles"
           >
             <FaShoppingCart /> Purchase Bundles
+          </button>
+          <button
+            className={`nav-button ${activeTab === "referral" ? "active" : ""}`}
+            onClick={() => setActiveTab("referral")} // Added for referral tab
+            aria-label="Referral Link"
+          >
+            <FaLink /> Referral Link
           </button>
           <button
             className="nav-button"
@@ -758,6 +770,41 @@ function AgentPortal() {
                   )}
                 </motion.button>
               </form>
+            </>
+          )}
+
+          {activeTab === "referral" && ( // Added referral tab content
+            <>
+              <h2>Referral Link</h2>
+              <div className="referral-section">
+                <p>
+                  Share this link with your customers to allow them to purchase
+                  data bundles directly:
+                </p>
+                <div className="referral-link-container">
+                  <input
+                    type="text"
+                    value={referralLink}
+                    readOnly
+                    className="referral-link-input"
+                    aria-label="Agent referral link"
+                  />
+                  <motion.button
+                    onClick={copyReferralLink}
+                    className="copy-button"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    aria-label="Copy referral link"
+                  >
+                    <FaLink /> Copy Link
+                  </motion.button>
+                </div>
+                <p className="referral-info">
+                  Customers using this link will be associated with your agent
+                  account, and their transactions will appear in your
+                  transaction history.
+                </p>
+              </div>
             </>
           )}
         </motion.section>

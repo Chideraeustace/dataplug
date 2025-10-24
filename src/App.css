@@ -152,7 +152,6 @@ h1 {
 .agent-portal-btn {
   background: var(--agent-gradient);
   color: white;
-  display: none;
 }
 
 /* PROVIDER LOGOS */
