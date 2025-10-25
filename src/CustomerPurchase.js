@@ -16,7 +16,8 @@ import {
 import Modal from "react-modal";
 import { db, functions } from "./Firebase";
 import { httpsCallable } from "firebase/functions";
-import { collection, addDoc } from "firebase/firestore";
+import { getDoc, doc } from "firebase/firestore";
+import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import "./CustomerPurchase.css";
 
 Modal.setAppElement("#root");
@@ -31,6 +32,9 @@ const PROVIDER_R_SWITCH_MAP = {
   mtn: "MTN",
   airtel: "ATL",
   telecel: "VDF",
+  tgo: "TGO",
+  zpy: "ZPY",
+  gmy: "GMY",
 };
 
 const publicProvidersData = {
@@ -64,12 +68,12 @@ const publicProvidersData = {
     { gb: 50, price: 220.0 },
   ],
   mtn: [
-    { gb: 1, price: 5.0 },
-    { gb: 2, price: 10.0 },
-    { gb: 3, price: 15.5 },
+    { gb: 1, price: 6.0 },
+    { gb: 2, price: 12.0 },
+    { gb: 3, price: 16.5 },
     { gb: 4, price: 22.0 },
     { gb: 5, price: 26.5 },
-    { gb: 6, price: 33.5 },
+    { gb: 6, price: 30.0 },
     { gb: 8, price: 41.5 },
     { gb: 10, price: 45.0 },
     { gb: 15, price: 74.0 },
@@ -84,14 +88,20 @@ const publicProvidersData = {
 
 function CustomerPurchase() {
   const { agentId } = useParams();
-  const [selectedProvider, setSelectedProvider] = useState("airtel");
-  const [selectedBundleSize, setSelectedBundleSize] = useState("1");
+  const [selectedProvider, setSelectedProvider] = useState("mtn");
+  const [selectedBundleSize, setSelectedBundleSize] = useState("6");
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
   const [momoPhoneNumber, setMomoPhoneNumber] = useState("");
   const [paymentProvider, setPaymentProvider] = useState("mtn");
   const [purchaseDetails, setPurchaseDetails] = useState(null);
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
-  const [isLoading, setIsLoading] = useState(true); // Added for initial load
+  const [isLoading, setIsLoading] = useState(true);
+  const [agentName, setAgentName] = useState("");
+  const [customPrices, setCustomPrices] = useState({
+    mtn: {},
+    airtel: {},
+    telecel: {},
+  });
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
@@ -103,17 +113,60 @@ function CustomerPurchase() {
     []
   );
 
-  // Simulate initial loading
+  // Fetch agent name and custom prices
   useEffect(() => {
-    setTimeout(() => setIsLoading(false), 500);
+    const fetchAgentData = async () => {
+      try {
+        const agentDoc = await getDoc(doc(db, "dataplug-agents", agentId));
+        if (agentDoc.exists()) {
+          const data = agentDoc.data();
+          setAgentName(data.fullName || "Agent");
+          setCustomPrices(
+            data.customPrices || { mtn: {}, airtel: {}, telecel: {} }
+          );
+        } else {
+          setErrorMessage("Agent not found.");
+        }
+      } catch (error) {
+        console.error("Error fetching agent data:", error);
+        setErrorMessage("Failed to load agent details.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchAgentData();
+  }, [agentId]);
+
+  // Ensure user is authenticated
+  useEffect(() => {
+    const auth = getAuth();
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        console.log("No user signed in, attempting anonymous sign-in");
+        signInAnonymously(auth)
+          .then(() => console.log("Anonymous sign-in successful"))
+          .catch((error) => {
+            console.error("Anonymous sign-in failed:", error);
+            setErrorMessage("Authentication failed. Please try again.");
+          });
+      } else {
+        console.log("User signed in:", user.uid);
+      }
+    });
   }, []);
 
+  // Merge custom prices with default prices
   const getSelectedBundle = useMemo(() => {
-    const providerBundles = publicProvidersData[selectedProvider];
+    const providerBundles = publicProvidersData[selectedProvider].map(
+      (bundle) => ({
+        ...bundle,
+        price: customPrices[selectedProvider]?.[bundle.gb] || bundle.price,
+      })
+    );
     return providerBundles?.find(
       (bundle) => bundle.gb === Number(selectedBundleSize)
     );
-  }, [selectedProvider, selectedBundleSize]);
+  }, [selectedProvider, selectedBundleSize, customPrices]);
 
   const getRSwitch = useMemo(
     () => PROVIDER_R_SWITCH_MAP[paymentProvider],
@@ -129,7 +182,7 @@ function CustomerPurchase() {
   const formatPhoneNumber = useCallback((phone) => {
     if (phone.startsWith("0") && phone.length === 10)
       return `233${phone.slice(1)}`;
-    if (phone.startsWith("233") && phone.length === 13) return phone;
+    if (phone.startsWith("233") && phone.length === 12) return phone;
     return `233${phone}`;
   }, []);
 
@@ -157,7 +210,7 @@ function CustomerPurchase() {
   // Reset bundle size when provider changes
   useEffect(() => {
     setSelectedBundleSize(
-      publicProvidersData[selectedProvider][0]?.gb.toString() || "1"
+      publicProvidersData[selectedProvider][0]?.gb.toString() || "6"
     );
   }, [selectedProvider]);
 
@@ -192,7 +245,16 @@ function CustomerPurchase() {
         setErrorMessage(`Payment declined: ${reason || "Unknown reason"}`);
       }
     } catch (error) {
-      setErrorMessage(`Failed to check payment status: ${error.message}`);
+      console.error("Status check error:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+      setErrorMessage(
+        error.code === "internal"
+          ? "Failed to check payment status. Please try again."
+          : error.message
+      );
     }
   }, [purchaseDetails, startThetellerPayment]);
 
@@ -200,12 +262,12 @@ function CustomerPurchase() {
     e.preventDefault();
     if (
       !getSelectedBundle ||
-      !/^\d{10}$/.test(recipientPhoneNumber) ||
-      !/^\d{10}$/.test(momoPhoneNumber) ||
+      !/^\d{10}$|^\d{12}$/.test(recipientPhoneNumber) ||
+      !/^\d{10}$|^\d{12}$/.test(momoPhoneNumber) ||
       !paymentProvider
     ) {
       setErrorMessage(
-        "Please enter valid 10-digit phone numbers and select a bundle and payment network."
+        "Please enter valid 10 or 12-digit phone numbers and select a bundle and payment network."
       );
       return;
     }
@@ -214,7 +276,7 @@ function CustomerPurchase() {
     setErrorMessage("");
     statusCache.current.clear();
     const transactionId = generateTransactionId();
-    const amountInPesewas = (getSelectedBundle.price * 100).toFixed(0);
+    const amountInGHS = getSelectedBundle.price.toFixed(2);
 
     const newPurchaseDetails = {
       provider: selectedProvider.toUpperCase(),
@@ -233,34 +295,22 @@ function CustomerPurchase() {
     setModalIsOpen(true);
 
     try {
-      const response = await startThetellerPayment({
+      const payload = {
         merchant_id: THETELLER_CONFIG.merchantId,
         transaction_id: transactionId,
         desc: `${
           getSelectedBundle.gb
         }GB ${selectedProvider.toUpperCase()} Data Bundle`,
-        amount: amountInPesewas,
+        amount: amountInGHS,
         subscriber_number: formatPhoneNumber(momoPhoneNumber),
         recipient_number: formatPhoneNumber(recipientPhoneNumber),
         r_switch: getRSwitch,
         email: STATIC_CUSTOMER_EMAIL,
         isAgentSignup: false,
-      });
-
-      await addDoc(collection(db, "data_approve_teller_transaction"), {
-        userId: agentId,
-        transaction_id: transactionId,
-        provider: selectedProvider.toUpperCase(),
-        gb: getSelectedBundle.gb,
-        amount: getSelectedBundle.price,
-        recipient_number: formatPhoneNumber(recipientPhoneNumber),
-        subscriber_number: formatPhoneNumber(momoPhoneNumber),
-        r_switch: getRSwitch,
-        status: response.data.status,
-        purchasedAt: new Date(),
-        exported: false,
-      });
-
+      };
+      console.log("Sending payload:", payload);
+      const response = await startThetellerPayment(payload);
+      console.log("Backend response:", response);
       setPaymentStatus(response.data.status);
       setErrorMessage(
         `📱 Transaction initiated for ${momoPhoneNumber} (payment) and ${recipientPhoneNumber} (data recipient)!`
@@ -270,7 +320,20 @@ function CustomerPurchase() {
         checkPaymentStatus();
       }, 35000);
     } catch (error) {
-      setErrorMessage(`Payment failed: ${error.message}`);
+      console.error("Payment error:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+      });
+      setErrorMessage(
+        error.code === "invalid-argument"
+          ? "Invalid input. Please check your phone numbers, bundle, or payment network."
+          : error.code === "internal"
+          ? "Payment processing failed. Please try again later."
+          : error.code === "unauthenticated"
+          ? "Please sign in to make a purchase."
+          : `Payment failed: ${error.message}`
+      );
       setPurchaseDetails(null);
       setCountdown(null);
       setModalIsOpen(false);
@@ -286,8 +349,8 @@ function CustomerPurchase() {
     setRecipientPhoneNumber("");
     setMomoPhoneNumber("");
     setPaymentProvider("mtn");
-    setSelectedProvider("airtel");
-    setSelectedBundleSize("1");
+    setSelectedProvider("mtn");
+    setSelectedBundleSize("6");
     setErrorMessage("");
     setCountdown(null);
     statusCache.current.clear();
@@ -327,6 +390,7 @@ function CustomerPurchase() {
             transition={{ duration: 0.5 }}
           >
             <h1>Ricky's Data - Purchase Bundle</h1>
+            {agentName && <p>Purchasing through {agentName}</p>}
             <p>Fast, reliable data bundles for you!</p>
           </motion.header>
 
@@ -357,10 +421,17 @@ function CustomerPurchase() {
                   value: selectedBundleSize,
                   onChange: (e) => setSelectedBundleSize(e.target.value),
                   options: publicProvidersData[selectedProvider]?.map(
-                    (bundle) => ({
-                      value: bundle.gb,
-                      label: `${bundle.gb} GB (GHS ${bundle.price.toFixed(2)})`,
-                    })
+                    (bundle) => {
+                      const displayPrice =
+                        customPrices[selectedProvider]?.[bundle.gb] ||
+                        bundle.price;
+                      return {
+                        value: bundle.gb,
+                        label: `${bundle.gb} GB (GHS ${displayPrice.toFixed(
+                          2
+                        )})`,
+                      };
+                    }
                   ),
                 },
                 {
@@ -369,11 +440,11 @@ function CustomerPurchase() {
                   type: "tel",
                   value: recipientPhoneNumber,
                   onChange: (e) => setRecipientPhoneNumber(e.target.value),
-                  placeholder: "0541234567",
+                  placeholder: "0541234567 or 233541234567",
                   error:
                     recipientPhoneNumber &&
-                    !/^\d{10}$/.test(recipientPhoneNumber)
-                      ? "Please enter a valid 10-digit phone number."
+                    !/^\d{10}$|^\d{12}$/.test(recipientPhoneNumber)
+                      ? "Please enter a valid 10 or 12-digit phone number."
                       : null,
                 },
                 {
@@ -382,10 +453,11 @@ function CustomerPurchase() {
                   type: "tel",
                   value: momoPhoneNumber,
                   onChange: (e) => setMomoPhoneNumber(e.target.value),
-                  placeholder: "0541234567",
+                  placeholder: "0541234567 or 233541234567",
                   error:
-                    momoPhoneNumber && !/^\d{10}$/.test(momoPhoneNumber)
-                      ? "Please enter a valid 10-digit MoMo phone number."
+                    momoPhoneNumber &&
+                    !/^\d{10}$|^\d{12}$/.test(momoPhoneNumber)
+                      ? "Please enter a valid 10 or 12-digit MoMo phone number."
                       : null,
                 },
                 {
@@ -429,7 +501,9 @@ function CustomerPurchase() {
                       value={field.value}
                       onChange={field.onChange}
                       placeholder={field.placeholder}
-                      pattern={field.type === "tel" ? "[0-9]{10}" : undefined}
+                      pattern={
+                        field.type === "tel" ? "[0-9]{10}|[0-9]{12}" : undefined
+                      }
                       required
                       aria-describedby={`${field.id}-error`}
                       className={field.error ? "input-error" : ""}

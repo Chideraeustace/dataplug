@@ -11,6 +11,13 @@
     flex-direction: column;
 }
 
+/* Logo */
+.customer-header .logo {
+    max-width: 140px;
+    margin-bottom: 1rem;
+    animation: bounceIn 0.5s ease;
+}
+
 /* Loading Spinner */
 .loading-spinner {
     display: flex;
@@ -33,15 +40,13 @@
 .customer-header h1 {
     font-size: 2.75rem;
     font-weight: 800;
-    color: #2D3748;
-    /* Dark gray */
-    margin-bottom: 0.5rem;
-    letter-spacing: -0.025em;
     background: linear-gradient(90deg, #6B46C1, #9F7AEA);
     /* Purple gradient */
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.025em;
 }
 
 .customer-header p {
@@ -422,6 +427,10 @@
 
     .customer-header h1 {
         font-size: 2rem;
+    }
+
+    .customer-header .logo {
+        max-width: 100px;
     }
 
     .customer-content {

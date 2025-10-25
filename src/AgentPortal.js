@@ -17,18 +17,10 @@ import {
   FaCheckCircle,
   FaSpinner,
   FaTimesCircle,
-  FaLink, // Added for referral link icon
+  FaLink,
 } from "react-icons/fa";
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  updateDoc,
-  getDoc,
-} from "firebase/firestore";
+import { collection, query, where, getDocs } from "firebase/firestore";
 import Modal from "react-modal";
 import { auth, db, functions } from "./Firebase";
 import { httpsCallable } from "firebase/functions";
@@ -128,17 +120,11 @@ function AgentPortal() {
   const [isPaymentLoading, setIsPaymentLoading] = useState(false);
   const [dataPhoneNumber, setDataPhoneNumber] = useState("");
   const [checkDataModalOpen, setCheckDataModalOpen] = useState(false);
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
-  const [agentFullName, setAgentFullName] = useState("");
-  const [agentPhone, setAgentPhone] = useState("");
-  const [agentUsername, setAgentUsername] = useState("");
-  const [profileError, setProfileError] = useState("");
-  const [profileSuccess, setProfileSuccess] = useState("");
   const [modalIsOpen, setModalIsOpen] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [countdown, setCountdown] = useState(null);
-  const [referralLink, setReferralLink] = useState(""); // Added for referral link// Referral link state
+  const [referralLink, setReferralLink] = useState("");
   const [isReferralLoading, setIsReferralLoading] = useState(true);
   const statusCache = useRef(new Map());
   const timeoutRef = useRef(null);
@@ -172,7 +158,6 @@ function AgentPortal() {
     return `233${phone}`;
   }, []);
 
-  // Generate referral link
   const generateReferralLink = useCallback(() => {
     if (currentUser?.uid) {
       const baseUrl = window.location.origin;
@@ -184,13 +169,11 @@ function AgentPortal() {
     }
   }, [currentUser]);
 
-  // Copy referral link to clipboard
   const copyReferralLink = useCallback(async () => {
     if (!referralLink || typeof referralLink !== "string") {
       setErrorMessage("Referral link is not available. Please try again.");
       return;
     }
-
     try {
       await navigator.clipboard.write(referralLink);
       setErrorMessage("Referral link copied to clipboard!");
@@ -200,7 +183,6 @@ function AgentPortal() {
     }
   }, [referralLink]);
 
-  // Countdown timer effect
   useEffect(() => {
     if (countdown === null) return;
     if (countdown <= 0) {
@@ -213,14 +195,12 @@ function AgentPortal() {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  // Auth state and referral link generation
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setCurrentUser(user);
         fetchAgentTransactions(user.uid);
-        fetchAgentProfile(user.uid);
-        generateReferralLink(); // Generate referral link on auth
+        generateReferralLink();
       } else {
         navigate("/");
       }
@@ -228,14 +208,12 @@ function AgentPortal() {
     return () => unsubscribe();
   }, [navigate, generateReferralLink]);
 
-  // Reset bundle size when provider changes
   useEffect(() => {
     setSelectedBundleSize(
       publicProvidersData[selectedProvider][0]?.gb.toString() || "1"
     );
   }, [selectedProvider]);
 
-  // Error message timeout
   useEffect(() => {
     if (errorMessage) {
       const timer = setTimeout(() => setErrorMessage(""), 5000);
@@ -249,19 +227,16 @@ function AgentPortal() {
       closeModal();
       return;
     }
-
     if (statusCache.current.has(purchaseDetails.transid)) {
       const cachedStatus = statusCache.current.get(purchaseDetails.transid);
       setPaymentStatus(cachedStatus.final_status);
       return;
     }
-
     try {
       const result = await startThetellerPayment({
         transaction_id: purchaseDetails.transid,
         isCallback: true,
       });
-
       const { final_status, code, reason } = result.data;
       statusCache.current.set(purchaseDetails.transid, {
         final_status,
@@ -269,7 +244,6 @@ function AgentPortal() {
         reason,
       });
       setPaymentStatus(final_status);
-
       if (final_status === "declined") {
         setErrorMessage(`Payment declined: ${reason || "Unknown reason"}`);
       }
@@ -298,47 +272,6 @@ function AgentPortal() {
     }
   };
 
-  const fetchAgentProfile = async (userId) => {
-    try {
-      const agentDoc = await getDoc(doc(db, "dataplug-agents", userId));
-      if (agentDoc.exists()) {
-        const data = agentDoc.data();
-        setAgentFullName(data.fullName);
-        setAgentPhone(data.phone);
-        setAgentUsername(data.username);
-      }
-    } catch (error) {
-      setErrorMessage("Failed to load profile.");
-    }
-  };
-
-  const handleUpdateProfile = async (e) => {
-    e.preventDefault();
-    if (!agentFullName || !agentPhone || !agentUsername) {
-      setProfileError("Please fill all fields.");
-      return;
-    }
-    if (agentPhone.length !== 10 || !/^\d{10}$/.test(agentPhone)) {
-      setProfileError("Please enter a valid 10-digit phone number.");
-      return;
-    }
-    try {
-      await updateDoc(doc(db, "dataplug-agents", currentUser.uid), {
-        fullName: agentFullName,
-        phone: agentPhone,
-        username: agentUsername,
-      });
-      setProfileSuccess("Profile updated successfully!");
-      setProfileError("");
-      setTimeout(() => {
-        setProfileModalOpen(false);
-        setProfileSuccess("");
-      }, 2000);
-    } catch (error) {
-      setProfileError("Failed to update profile.");
-    }
-  };
-
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -361,13 +294,11 @@ function AgentPortal() {
       );
       return;
     }
-
     setIsPaymentLoading(true);
     setErrorMessage("");
     statusCache.current.clear();
     const transactionId = generateTransactionId();
-    const amountInPesewas = (getSelectedBundle.price * 100).toFixed(0);
-
+    const amountInGHS = getSelectedBundle.price.toFixed(2);
     const newPurchaseDetails = {
       provider: selectedProvider.toUpperCase(),
       gb: getSelectedBundle.gb,
@@ -377,12 +308,10 @@ function AgentPortal() {
       paymentProvider: paymentProvider.toUpperCase(),
       transid: transactionId,
     };
-
     setPurchaseDetails(newPurchaseDetails);
     setPaymentStatus(null);
     setCountdown(35);
     setModalIsOpen(true);
-
     try {
       const response = await startThetellerPayment({
         merchant_id: THETELLER_CONFIG.merchantId,
@@ -390,19 +319,17 @@ function AgentPortal() {
         desc: `${
           getSelectedBundle.gb
         }GB ${selectedProvider.toUpperCase()} Data Bundle`,
-        amount: amountInPesewas,
+        amount: amountInGHS,
         subscriber_number: formatPhoneNumber(momoPhoneNumber),
         recipient_number: formatPhoneNumber(recipientPhoneNumber),
         r_switch: getRSwitch,
         email: STATIC_CUSTOMER_EMAIL,
         isAgentSignup: false,
       });
-
       setPaymentStatus(response.data.status);
       setErrorMessage(
         `📱 Transaction initiated for ${momoPhoneNumber} (payment) and ${recipientPhoneNumber} (data recipient)!`
       );
-
       timeoutRef.current = setTimeout(() => {
         checkPaymentStatus();
         fetchAgentTransactions(currentUser.uid);
@@ -441,20 +368,12 @@ function AgentPortal() {
     setErrorMessage("");
   };
 
-  const closeProfileModal = () => {
-    setProfileModalOpen(false);
-    setProfileError("");
-    setProfileSuccess("");
-    setErrorMessage("");
-  };
-
   const handleCheckData = async (e) => {
     e.preventDefault();
     if (!/^\d{10}$/.test(dataPhoneNumber)) {
       setErrorMessage("Please enter a valid 10-digit phone number.");
       return;
     }
-
     const formattedPhone = formatPhoneNumber(dataPhoneNumber);
     try {
       let q = query(
@@ -462,7 +381,6 @@ function AgentPortal() {
         where("recipient_number", "==", formattedPhone)
       );
       let snapshot = await getDocs(q);
-
       if (snapshot.empty) {
         q = query(
           collection(db, "theteller-transactions"),
@@ -470,15 +388,12 @@ function AgentPortal() {
         );
         snapshot = await getDocs(q);
       }
-
       if (snapshot.empty) {
         setErrorMessage(`No data bundle found for ${dataPhoneNumber}`);
         return;
       }
-
       const data = snapshot.docs[0].data();
       let message = "";
-
       switch (data.status) {
         case "pending_pin":
           message = `⏳ Enter PIN on ${data.subscriber_number} to complete payment!`;
@@ -494,14 +409,12 @@ function AgentPortal() {
         default:
           message = `Status: ${data.status}`;
       }
-
       alert(message);
     } catch (error) {
       setErrorMessage("Error checking status.");
     }
   };
 
-  // JSX
   return (
     <ErrorBoundary>
       <div className="agent-portal">
@@ -523,12 +436,10 @@ function AgentPortal() {
         >
           <div className="title-with-icon">
             <FaUserShield className="agent-icon" aria-hidden="true" />
-            <h1>Agent Portal - Data Plug</h1>
+            <h1>Agent Portal - Ricky's Data</h1>
           </div>
           {currentUser && (
-            <p className="welcome-message">
-              Welcome, {agentFullName || currentUser.email}
-            </p>
+            <p className="welcome-message">Welcome, {currentUser.email}</p>
           )}
         </motion.header>
 
@@ -554,7 +465,7 @@ function AgentPortal() {
           </button>
           <button
             className={`nav-button ${activeTab === "referral" ? "active" : ""}`}
-            onClick={() => setActiveTab("referral")} // Added for referral tab
+            onClick={() => setActiveTab("referral")}
             aria-label="Referral Link"
           >
             <FaLink /> Referral Link
@@ -568,10 +479,10 @@ function AgentPortal() {
           </button>
           <button
             className="nav-button"
-            onClick={() => setProfileModalOpen(true)}
+            onClick={() => navigate("/edit-profile")} // Navigate to EditProfile
             aria-label="Edit Profile"
           >
-            <FaUserEdit /> Edit Profile
+            <FaUserEdit /> Edit Profile/ Prices
           </button>
           <button
             className="nav-button"
@@ -639,13 +550,14 @@ function AgentPortal() {
                         </p>
                         <p>
                           <strong>Status:</strong>{" "}
-                          {transaction.exported ? "✅ Processed" : "⏳ Pending"}
+                          {transaction.exported
+                            ? "✅ Processed"
+                            : "⏳ Pending Processing"}
                         </p>
                         <p>
                           <strong>Date:</strong>{" "}
-                          {transaction.purchasedAt
-                            ?.toDate()
-                            ?.toLocaleString() || "N/A"}
+                          {transaction.createdAt?.toDate()?.toLocaleString() ||
+                            "N/A"}
                         </p>
                       </div>
                     </motion.div>
@@ -773,7 +685,7 @@ function AgentPortal() {
             </>
           )}
 
-          {activeTab === "referral" && ( // Added referral tab content
+          {activeTab === "referral" && (
             <>
               <h2>Referral Link</h2>
               <div className="referral-section">
@@ -979,94 +891,6 @@ function AgentPortal() {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               aria-label="Cancel check data"
-            >
-              Cancel
-            </motion.button>
-          </div>
-        </Modal>
-
-        {/* PROFILE MODAL */}
-        <Modal
-          isOpen={profileModalOpen}
-          onRequestClose={closeProfileModal}
-          className="modal"
-          overlayClassName="overlay"
-          aria-labelledby="profile-modal-title"
-        >
-          <div className="modal-content">
-            <h2 id="profile-modal-title">
-              <FaUserEdit /> Edit Profile
-            </h2>
-            {profileError && <p className="error-message">{profileError}</p>}
-            {profileSuccess && (
-              <p className="success-message">{profileSuccess}</p>
-            )}
-            <form onSubmit={handleUpdateProfile} className="simple-form">
-              <div className="form-group">
-                <label htmlFor="full-name">Full Name:</label>
-                <input
-                  id="full-name"
-                  type="text"
-                  value={agentFullName}
-                  onChange={(e) => setAgentFullName(e.target.value)}
-                  required
-                  aria-describedby="full-name-error"
-                />
-                {!agentFullName && (
-                  <span className="form-error" id="full-name-error">
-                    Full name is required.
-                  </span>
-                )}
-              </div>
-              <div className="form-group">
-                <label htmlFor="profile-phone">Phone Number:</label>
-                <input
-                  id="profile-phone"
-                  type="tel"
-                  value={agentPhone}
-                  onChange={(e) => setAgentPhone(e.target.value)}
-                  pattern="[0-9]{10}"
-                  required
-                  aria-describedby="profile-phone-error"
-                />
-                {agentPhone && !/^\d{10}$/.test(agentPhone) && (
-                  <span className="form-error" id="profile-phone-error">
-                    Please enter a valid 10-digit phone number.
-                  </span>
-                )}
-              </div>
-              <div className="form-group">
-                <label htmlFor="username">Username:</label>
-                <input
-                  id="username"
-                  type="text"
-                  value={agentUsername}
-                  onChange={(e) => setAgentUsername(e.target.value)}
-                  required
-                  aria-describedby="username-error"
-                />
-                {!agentUsername && (
-                  <span className="form-error" id="username-error">
-                    Username is required.
-                  </span>
-                )}
-              </div>
-              <motion.button
-                type="submit"
-                className="submit-button"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                aria-label="Update profile"
-              >
-                Update Profile
-              </motion.button>
-            </form>
-            <motion.button
-              onClick={closeProfileModal}
-              className="close-modal-button secondary"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              aria-label="Cancel profile edit"
             >
               Cancel
             </motion.button>

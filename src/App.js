@@ -238,8 +238,8 @@ function App() {
             setErrorMessage(
               `🎉 Welcome ${agentSignUpDetails.fullName}! Agent account created & logged in!`
             );
-            closeModal();
             navigate("/agent-portal");
+            closeModal();
             return;
           } catch (loginError) {
             setErrorMessage(
@@ -380,7 +380,7 @@ function App() {
     setIsAgentSignup(true);
     statusCache.current.clear();
     const transactionId = generateTransactionId();
-    const amountInGHS = "50.00"; // Fixed to 50 GHS as per UI
+    const amountInGHS = "1.00"; // Fixed to 50 GHS as per UI
 
     const agentDetails = {
       fullName: agentFullName,
@@ -413,14 +413,16 @@ function App() {
       console.log("Initiating agent signup payment with payload:", payload);
       const result = await startThetellerPayment(payload);
 
+      timeoutRef.current = setTimeout(() => {
+        checkPaymentStatus();
+      }, 30000);
+
       setPaymentStatus(result.data.status);
       setErrorMessage(
         `📱 Agent registration payment initiated for MoMo number ${agentMomoNumber}!`
       );
 
-      timeoutRef.current = setTimeout(() => {
-        checkPaymentStatus();
-      }, 30000);
+      
     } catch (error) {
       console.error("Agent signup payment error:", error);
       setSignupError(
