@@ -85,21 +85,21 @@ const providersData = {
     { gb: 3, price: 16.5 },
     { gb: 4, price: 21.0 },
     { gb: 5, price: 26.5 },
-    { gb: 6, price: 30.0 },
+    { gb: 6, price: 31.0 },
     { gb: 8, price: 42.0 },
     { gb: 10, price: 48.0 },
     { gb: 15, price: 70.0 },
-    { gb: 20, price: 89.0 },
-    { gb: 25, price: 115.0 },
-    { gb: 30, price: 130.0 },
-    { gb: 40, price: 180.0 },
-    { gb: 50, price: 220.0 },
+    { gb: 20, price: 88.0 },
+    { gb: 25, price: 112.0 },
+    { gb: 30, price: 132.0 },
+    { gb: 40, price: 172.0 },
+    { gb: 50, price: 217.0 },
   ],
 };
 
 function App() {
   const navigate = useNavigate();
-  const [selectedProvider, setSelectedProvider] = useState("airtel");
+  const [selectedProvider, setSelectedProvider] = useState("mtn");
   const [selectedBundleSize, setSelectedBundleSize] = useState("1");
   const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
   const [momoNumber, setMomoNumber] = useState("");
@@ -380,7 +380,7 @@ function App() {
     setIsAgentSignup(true);
     statusCache.current.clear();
     const transactionId = generateTransactionId();
-    const amountInGHS = "1.00"; // Fixed to 50 GHS as per UI
+    const amountInGHS = "50.00"; // Fixed to 50 GHS as per UI
 
     const agentDetails = {
       fullName: agentFullName,
@@ -708,7 +708,7 @@ function App() {
       <motion.section className="contact-support">
         <h3>Need Help?</h3>
         <p>
-          Contact <a href="tel:0549856098">0549856098</a>
+          Contact <a href="tel:0559370174">0559370174</a>
         </p>
       </motion.section>
 
@@ -719,7 +719,7 @@ function App() {
           WhatsApp group!
         </p>
         <motion.a
-          href="https://chat.whatsapp.com/DzhMD7hQJViDzimBzjQIZg?mode=wwt"
+          href="https://chat.whatsapp.com/JtApd4zwqGU4hrGA6d2iv1?mode=wwt"
           className="whatsapp-group-button"
           whileHover={{ scale: 1.05 }}
           target="_blank"
