@@ -1,2 +1,5 @@
 node_modules/
 *.local
+
+functions/node_modules/
+functions/index.js
