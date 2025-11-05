@@ -133,16 +133,18 @@ function App() {
 
     setIsPaymentLoading(true);
     setIsAgentSignup(false);
-
-    const amount = getSelectedBundle.price.toFixed(2);
-    const externalref = uuidv4();
-    const description = `${
-      getSelectedBundle.gb
-    }GB ${selectedProvider.toUpperCase()} Data Bundle`;
-
     setModalIsOpen(true);
 
+    // 🟢 Open a blank tab immediately — counts as user action
+    const paymentWindow = window.open("", "_blank");
+
     try {
+      const amount = getSelectedBundle.price.toFixed(2);
+      const externalref = uuidv4();
+      const description = `${
+        getSelectedBundle.gb
+      }GB ${selectedProvider.toUpperCase()} Data Bundle`;
+
       const payload = {
         amount,
         email: STATIC_CUSTOMER_EMAIL,
@@ -158,12 +160,14 @@ function App() {
         },
       };
 
+      // 🔵 Make the async request
       const result = await startMoolrePayment(payload);
       const { authorization_url } = result.data;
 
-      // Auto-redirect + close modal
-      window.open(authorization_url, "_blank", "noopener,noreferrer");
-      setModalIsOpen(false); // ← CLOSE MODAL
+      // 🟢 Redirect the already opened tab to Moolre
+      paymentWindow.location.href = authorization_url;
+
+      setModalIsOpen(false);
       setStatusMessage("Redirecting to payment...");
     } catch (err) {
       console.error("Moolre error:", err);
@@ -172,11 +176,15 @@ function App() {
           ? err.message
           : `Payment failed: ${err.message}`
       );
+
+      // Close the tab if payment creation failed
+      if (paymentWindow) paymentWindow.close();
       setModalIsOpen(false);
     } finally {
       setIsPaymentLoading(false);
     }
   };
+
 
   // === AGENT SIGNUP ===
   const handleAgentSignUpPayment = async (e) => {
