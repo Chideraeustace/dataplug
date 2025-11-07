@@ -149,6 +149,7 @@ function App() {
         amount,
         email: STATIC_CUSTOMER_EMAIL,
         desc: description,
+        redirect: window.location.href,
         externalref,
         metadata: {
           type: "data_bundle",
@@ -198,6 +199,8 @@ function App() {
       signUpUsername,
       signUpPassword,
     ];
+
+    // 🔹 Validate inputs
     if (fields.some((f) => !f)) {
       setSignupError("Please fill all fields.");
       return;
@@ -214,11 +217,13 @@ function App() {
     setIsPaymentLoading(true);
     setSignupError("");
     setIsAgentSignup(true);
+    setModalIsOpen(true);
+
+    // 🟢 Open new tab immediately (user gesture, prevents blocking)
+    const paymentWindow = window.open("", "_blank");
 
     const amount = "50.00";
     const externalref = uuidv4();
-
-    setModalIsOpen(true);
 
     try {
       const payload = {
@@ -237,14 +242,21 @@ function App() {
         },
       };
 
+      // 🔵 Create payment session from backend
       const result = await startMoolrePayment(payload);
       const { authorization_url } = result.data;
 
-      window.open(authorization_url, "_blank", "noopener,noreferrer");
-      setModalIsOpen(false); // ← CLOSE MODAL
-      setStatusMessage("Redirecting to payment...");
+      // 🟢 Redirect the opened tab to Moolre
+      paymentWindow.location.href = authorization_url;
+
+      setModalIsOpen(false);
+      setStatusMessage("Redirecting to Moolre...");
     } catch (err) {
       console.error("Agent signup error:", err);
+
+      // Close tab if failed
+      if (paymentWindow) paymentWindow.close();
+
       setSignupError(
         err.code === "invalid-argument" ? err.message : `Failed: ${err.message}`
       );
@@ -253,6 +265,7 @@ function App() {
       setIsPaymentLoading(false);
     }
   };
+
 
   // === CHECK DATA STATUS ===
   const closeCheckDataModal = () => {

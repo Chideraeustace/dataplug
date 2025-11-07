@@ -11,9 +11,7 @@ admin.initializeApp();
 const db = admin.firestore();
 const MOOLRE_USERNAME = ""
 const MOOLRE_PUBKEY ="";
-
-
-
+ 
 exports.moolreWebhook = onRequest(
   { cors: true, timeoutSeconds: 60 },
   async (req, res) => {
@@ -125,6 +123,7 @@ async function saveDataPurchase(purchase, now) {
     serviceId: purchase.serviceId,
     serviceName: purchase.serviceName,
     recipientNumber: purchase.recipientNumber || null,
+    userid: purchase.userId,
     status: "approved",
     statusCheckedAt: now,
     transactionId: purchase.transactionId,
@@ -204,6 +203,7 @@ exports.startMoolrePayment = onCall(
       externalref,
       metadata = {},
       reusable = false,
+      redirect,
     } = data;
 
     const userId = auth?.uid;
@@ -242,7 +242,7 @@ exports.startMoolrePayment = onCall(
       amount: parseFloat(amount).toFixed(2),
       email,
       reusable,
-      redirect: "https://www.rickysdata.xyz",
+      redirect: redirect || "https://www.rickysdata.xyz",
       currency,
       externalref: ref,
       callback: defaultCallback,
