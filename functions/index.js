@@ -9,8 +9,8 @@ const admin = require("firebase-admin");
 
 admin.initializeApp();
 const db = admin.firestore();
-const MOOLRE_USERNAME = ""
-const MOOLRE_PUBKEY ="";
+const MOOLRE_USERNAME = "eustace"
+const MOOLRE_PUBKEY ="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ1c2VyaWQiOjEwNzI4MiwiZXhwIjoxOTI1MDA5OTk5fQ.3MxVZrp6g3HMToSVxXPQmYn4-iv7MgiEaefRusLt-WU";
  
 exports.moolreWebhook = onRequest(
   { cors: true, timeoutSeconds: 60 },
