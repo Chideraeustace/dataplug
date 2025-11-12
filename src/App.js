@@ -49,7 +49,7 @@ const providersData = {
     { gb: 30, price: 130.0 },
   ],
   mtn: [
-    { gb: 1, price: 1.0 },
+    { gb: 1, price: 6.0 },
     { gb: 2, price: 11.5 },
     { gb: 3, price: 16.0 },
     { gb: 4, price: 21.0 },
