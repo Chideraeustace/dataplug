@@ -406,4 +406,12 @@ exports.startThetellerPayment = onCall(
       );
     }
   }
+
+
+  <Route path="/agent-portal" element={<AgentPortal />} />
+        <Route path="/edit-profile" element={<EditProfile />} />
+        <Route
+          path="/customer-purchase/:agentId"
+          element={<CustomerPurchase />}
+        />{" "}
 );*/

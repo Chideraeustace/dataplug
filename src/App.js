@@ -49,9 +49,9 @@ const providersData = {
     { gb: 30, price: 130.0 },
   ],
   mtn: [
-    { gb: 1, price: 6.0 },
+    { gb: 1, price: 1.0 },
     { gb: 2, price: 11.5 },
-    { gb: 3, price: 16.5 },
+    { gb: 3, price: 16.0 },
     { gb: 4, price: 21.0 },
     { gb: 5, price: 25.5 },
     { gb: 6, price: 30.0 },
@@ -90,13 +90,13 @@ function App() {
   const [signUpPassword, setSignUpPassword] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
   const [signupError, setSignupError] = useState("");
-  const [statusMessage, setStatusMessage] = useState(""); // ← NEW: Homepage status
+  const [statusMessage, setStatusMessage] = useState("");
   const [isAgentSignup, setIsAgentSignup] = useState(false);
 
-  // === FIREBASE CALLABLE ===
-  const startMoolrePayment = useCallback(
-    httpsCallable(functions, "startMoolrePayment"),
-    []
+  // === FIREBASE CALLABLE (FIXED: Empty deps) ===
+  const startMoolrePayment = useMemo(
+    () => httpsCallable(functions, "startMoolrePayment"),
+    [] // 'functions' is stable, no need in deps
   );
 
   // === HELPERS ===
@@ -136,7 +136,6 @@ function App() {
     setIsAgentSignup(false);
     setModalIsOpen(true);
 
-    // 🟢 Open a blank tab immediately — counts as user action
     const paymentWindow = window.open("", "_blank");
 
     try {
@@ -162,11 +161,9 @@ function App() {
         },
       };
 
-      // 🔵 Make the async request
       const result = await startMoolrePayment(payload);
       const { authorization_url } = result.data;
 
-      // 🟢 Redirect the already opened tab to Moolre
       paymentWindow.location.href = authorization_url;
 
       setModalIsOpen(false);
@@ -179,14 +176,12 @@ function App() {
           : `Payment failed: ${err.message}`
       );
 
-      // Close the tab if payment creation failed
       if (paymentWindow) paymentWindow.close();
       setModalIsOpen(false);
     } finally {
       setIsPaymentLoading(false);
     }
   };
-
 
   // === AGENT SIGNUP ===
   const handleAgentSignUpPayment = async (e) => {
@@ -201,7 +196,6 @@ function App() {
       signUpPassword,
     ];
 
-    // 🔹 Validate inputs
     if (fields.some((f) => !f)) {
       setSignupError("Please fill all fields.");
       return;
@@ -220,7 +214,6 @@ function App() {
     setIsAgentSignup(true);
     setModalIsOpen(true);
 
-    // 🟢 Open new tab immediately (user gesture, prevents blocking)
     const paymentWindow = window.open("", "_blank");
 
     const amount = "50.00";
@@ -243,11 +236,9 @@ function App() {
         },
       };
 
-      // 🔵 Create payment session from backend
       const result = await startMoolrePayment(payload);
       const { authorization_url } = result.data;
 
-      // 🟢 Redirect the opened tab to Moolre
       paymentWindow.location.href = authorization_url;
 
       setModalIsOpen(false);
@@ -255,7 +246,6 @@ function App() {
     } catch (err) {
       console.error("Agent signup error:", err);
 
-      // Close tab if failed
       if (paymentWindow) paymentWindow.close();
 
       setSignupError(
@@ -266,7 +256,6 @@ function App() {
       setIsPaymentLoading(false);
     }
   };
-
 
   // === CHECK DATA STATUS ===
   const closeCheckDataModal = () => {
@@ -286,7 +275,7 @@ function App() {
     try {
       const q = query(
         collection(db, "webite_purchase"),
-        where("phoneNumber", "==", phone)
+        where("recipientNumber", "==", phone)
       );
       const snapshot = await getDocs(q);
 
@@ -423,7 +412,7 @@ function App() {
       <motion.section className="purchase-form-container">
         <h2>Purchase Data Bundle</h2>
         <p className="disclaimer-message">
-          Data will be credited within 5 mins - 4 hours
+          Data will be credited within 15mins - 2hours
         </p>
         <form onSubmit={handlePurchase} className="purchase-form">
           <div className="form-group">
@@ -567,7 +556,7 @@ function App() {
                 value={dataPhoneNumber}
                 onChange={(e) => setDataPhoneNumber(e.target.value)}
                 pattern="[0-9]{10}"
-                placeholder="0541234567"
+                placeholder="Enter Receipient Number"
                 required
               />
             </div>
