@@ -9,7 +9,7 @@ const admin = require("firebase-admin");
 
 admin.initializeApp();
 const db = admin.firestore();
-const MOOLRE_USERNAME = ""
+const MOOLRE_USERNAME = "eustace"
 const MOOLRE_PUBKEY ="";
  
 exports.moolreWebhook = onRequest(

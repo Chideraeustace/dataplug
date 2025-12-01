@@ -64,6 +64,7 @@ const providersData = {
     { gb: 30, price: 132.0 },
     { gb: 40, price: 167.0 },
     { gb: 50, price: 203.0 },
+    { gb: 106, price: 223.0 },
   ],
 };
 
