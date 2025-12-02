@@ -33,6 +33,7 @@ body {
   color: var(--text-color);
   line-height: 1.6;
   overflow-x: hidden;
+  display: none;
 }
 
 .app {
