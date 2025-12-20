@@ -146,7 +146,7 @@ h1 {
 .check-data-btn {
   background: var(--info-gradient);
   color: white;
-  background-color: #059669;
+  background-color: red;
 }
 
 .agent-portal-btn {
