@@ -49,22 +49,20 @@ const providersData = {
     { gb: 30, price: 130.0 },
   ],
   mtn: [
-    { gb: 1, price: 6.0 },
-    { gb: 2, price: 11.5 },
-    { gb: 3, price: 16.0 },
-    { gb: 4, price: 21.0 },
+    { gb: 1, price: 5.5 },
+    { gb: 2, price: 11.0 },
+    { gb: 3, price: 15.5 },
+    { gb: 4, price: 20.0 },
     { gb: 5, price: 25.5 },
     { gb: 6, price: 30.0 },
-    { gb: 7, price: 35.0 },
-    { gb: 8, price: 41.0 },
-    { gb: 10, price: 48.0 },
+    { gb: 8, price: 40.0 },
+    { gb: 10, price: 45.0 },
     { gb: 15, price: 68.0 },
-    { gb: 20, price: 88.0 },
-    { gb: 25, price: 112.0 },
-    { gb: 30, price: 132.0 },
-    { gb: 40, price: 167.0 },
-    { gb: 50, price: 203.0 },
-    { gb: 106, price: 223.0 },
+    { gb: 20, price: 85.0 },
+    { gb: 25, price: 105.0 },
+    { gb: 30, price: 125.0 },
+    { gb: 40, price: 162.0 },
+    { gb: 50, price: 200.0 },
   ],
 };
 
@@ -368,7 +366,7 @@ function App() {
       <header className="header">
         <motion.div className="title-with-icon">
           <FaWifi className="wifi-icon" />
-          <h1>Ricky's Data</h1>
+          <h1>Merry Christmas from Ricky's Data</h1>
         </motion.div>
         <motion.p className="subtitle">
           Easy & Affordable Data Bundle Purchase
