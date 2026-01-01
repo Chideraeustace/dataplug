@@ -366,7 +366,7 @@ function App() {
       <header className="header">
         <motion.div className="title-with-icon">
           <FaWifi className="wifi-icon" />
-          <h1>Merry Christmas from Ricky's Data</h1>
+          <h1>Welcome to Ricky's Data</h1>
         </motion.div>
         <motion.p className="subtitle">
           Easy & Affordable Data Bundle Purchase
