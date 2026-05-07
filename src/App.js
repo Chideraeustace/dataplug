@@ -1,721 +1,187 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./Firebase";
 import { motion } from "framer-motion";
-import Modal from "react-modal";
-import {
-  FaWhatsapp,
-  FaWifi,
-  FaSearch,
-  FaUserShield,
-  FaSpinner,
-} from "react-icons/fa";
-import { signInWithEmailAndPassword, onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db, auth, functions } from "./Firebase";
-import { httpsCallable } from "firebase/functions";
-import { v4 as uuidv4 } from "uuid";
-import "./App.css";
-import mtn from "./download.png";
-import airtel from "./airtel.png";
-import telecel from "./telecel.png";
 
-Modal.setAppElement("#root");
-
-// === CONFIG ===
-const STATIC_CUSTOMER_EMAIL = "customeremail@gmail.com";
-
-const providersData = {
-  airtel: [
-    { gb: 1, price: 5.0 },
-    { gb: 2, price: 10.0 },
-    { gb: 3, price: 15.0 },
-    { gb: 4, price: 20.0 },
-    { gb: 5, price: 25.0 },
-    { gb: 6, price: 30.0 },
-    { gb: 7, price: 35.0 },
-    { gb: 8, price: 40.0 },
-    { gb: 10, price: 45.0 },
-    { gb: 12, price: 52.0 },
-    { gb: 15, price: 65.0 },
-    { gb: 20, price: 83.0 },
-    { gb: 25, price: 106.0 },
-  ],
-  telecel: [
-    { gb: 5, price: 25.0 },
-    { gb: 10, price: 50.0 },
-    { gb: 15, price: 58.0 },
-    { gb: 20, price: 85.0 },
-    { gb: 25, price: 100.0 },
-    { gb: 30, price: 130.0 },
-  ],
-  mtn: [
-    { gb: 1, price: 6.0 },
-    { gb: 2, price: 12.0 },
-    { gb: 3, price: 16.0 },
-    { gb: 4, price: 21.0 },
-    { gb: 5, price: 26.0 },
-    { gb: 6, price: 30.0 },
-    { gb: 8, price: 42.0 },
-    { gb: 10, price: 47.0 },
-    { gb: 12, price: 53.0 },
-    { gb: 15, price: 67.0 },
-    { gb: 20, price: 87.0 },
-    { gb: 25, price: 105.0 },
-    { gb: 30, price: 128.0 },
-    { gb: 40, price: 168.0 },
-    { gb: 50, price: 199.0 },
-  ],
-};
+import Header from "./components/Header";
+import StatusMessage from "./components/StatusMessage";
+import ActionButtons from "./components/ActionButtons";
+import ProviderLogos from "./components/ProviderLogos";
+import PurchaseForm from "./components/PurchaseForm";
+import CheckDataModal from "./components/CheckDataModal";
+import AgentPortalModal from "./components/AgentPortalModal";
+import WhatsAppFloat from "./components/WhatsAppFloat";
 
 function App() {
   const navigate = useNavigate();
-
-  // === STATE ===
-  const [selectedProvider, setSelectedProvider] = useState("mtn");
-  const [selectedBundleSize, setSelectedBundleSize] = useState("1");
-  const [recipientPhoneNumber, setRecipientPhoneNumber] = useState("");
-  const [modalIsOpen, setModalIsOpen] = useState(false);
-  const [isPaymentLoading, setIsPaymentLoading] = useState(false);
-  const [checkDataModalOpen, setCheckDataModalOpen] = useState(false);
-  const [agentPortalModalOpen, setAgentPortalModalOpen] = useState(false);
-  const [dataPhoneNumber, setDataPhoneNumber] = useState("");
-  const [agentEmail, setAgentEmail] = useState("");
-  const [agentPassword, setAgentPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [agentFullName, setAgentFullName] = useState("");
-  const [agentPhone, setAgentPhone] = useState("");
-  const [agentMomoNumber, setAgentMomoNumber] = useState("");
-  const [agentSignUpEmail, setAgentSignUpEmail] = useState("");
-  const [signUpUsername, setSignUpUsername] = useState("");
-  const [signUpPassword, setSignUpPassword] = useState("");
   const [currentUser, setCurrentUser] = useState(null);
-  const [signupError, setSignupError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
-  const [isAgentSignup, setIsAgentSignup] = useState(false);
+  const [modalType, setModalType] = useState(null);
 
-  // === FIREBASE CALLABLE (FIXED: Empty deps) ===
-  const startMoolrePayment = useMemo(
-    () => httpsCallable(functions, "startMoolrePayment"),
-    [] // 'functions' is stable, no need in deps
-  );
-
-  // === HELPERS ===
-  const formatPhoneNumber = useCallback((phone) => {
-    let formatted = phone;
-    if (phone.startsWith("0") && phone.length === 10) {
-      formatted = `233${phone.slice(1)}`;
-    } else if (phone.startsWith("233") && phone.length === 12) {
-      formatted = phone;
-    } else {
-      formatted = `233${phone}`;
-    }
-    return formatted;
-  }, []);
-
-  const closeModal = () => {
-    setModalIsOpen(false);
-    setIsAgentSignup(false);
-  };
-
-  const getSelectedBundle = useMemo(() => {
-    return providersData[selectedProvider]?.find(
-      (bundle) => bundle.gb === Number(selectedBundleSize)
-    );
-  }, [selectedProvider, selectedBundleSize]);
-
-  // === DATA PURCHASE ===
-  const handlePurchase = async (e) => {
-    e.preventDefault();
-
-    if (!getSelectedBundle || !/^\d{10}$/.test(recipientPhoneNumber)) {
-      setStatusMessage("Please enter a valid 10-digit recipient phone number.");
-      return;
-    }
-
-    setIsPaymentLoading(true);
-    setIsAgentSignup(false);
-    setModalIsOpen(true);
-
-    const paymentWindow = window.open("", "_blank");
-
-    try {
-      const amount = getSelectedBundle.price.toFixed(2);
-      const externalref = uuidv4();
-      const description = `${
-        getSelectedBundle.gb
-      }GB ${selectedProvider.toUpperCase()} Data Bundle`;
-
-      const payload = {
-        amount,
-        email: STATIC_CUSTOMER_EMAIL,
-        desc: description,
-        redirect: window.location.href,
-        externalref,
-        metadata: {
-          type: "data_bundle",
-          provider: selectedProvider.toUpperCase(),
-          gb: getSelectedBundle.gb,
-          recipient_number: formatPhoneNumber(recipientPhoneNumber),
-          service_id: `D${getSelectedBundle.gb}`,
-          ussd_session_id: uuidv4(),
-        },
-      };
-
-      const result = await startMoolrePayment(payload);
-      const { authorization_url } = result.data;
-
-      paymentWindow.location.href = authorization_url;
-
-      setModalIsOpen(false);
-      setStatusMessage("Redirecting to payment...");
-    } catch (err) {
-      console.error("Moolre error:", err);
-      setStatusMessage(
-        err.code === "invalid-argument"
-          ? err.message
-          : `Payment failed: ${err.message}`
-      );
-
-      if (paymentWindow) paymentWindow.close();
-      setModalIsOpen(false);
-    } finally {
-      setIsPaymentLoading(false);
-    }
-  };
-
-  // === AGENT SIGNUP ===
-  const handleAgentSignUpPayment = async (e) => {
-    e.preventDefault();
-
-    const fields = [
-      agentFullName,
-      agentPhone,
-      agentMomoNumber,
-      agentSignUpEmail,
-      signUpUsername,
-      signUpPassword,
-    ];
-
-    if (fields.some((f) => !f)) {
-      setSignupError("Please fill all fields.");
-      return;
-    }
-    if (!/^\d{10}$/.test(agentPhone) || !/^\d{10}$/.test(agentMomoNumber)) {
-      setSignupError("Please enter valid 10-digit phone and MoMo numbers.");
-      return;
-    }
-    if (!agentSignUpEmail.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
-      setSignupError("Please enter a valid email address.");
-      return;
-    }
-
-    setIsPaymentLoading(true);
-    setSignupError("");
-    setIsAgentSignup(true);
-    setModalIsOpen(true);
-
-    const paymentWindow = window.open("", "_blank");
-
-    const amount = "50.00";
-    const externalref = uuidv4();
-
-    try {
-      const payload = {
-        amount,
-        email: agentSignUpEmail,
-        desc: `Agent registration – ${agentFullName}`,
-        externalref,
-        metadata: {
-          type: "agent_signup",
-          fullName: agentFullName,
-          phone: agentPhone,
-          momoNumber: agentMomoNumber,
-          email: agentSignUpEmail,
-          username: signUpUsername,
-          password: signUpPassword,
-        },
-      };
-
-      const result = await startMoolrePayment(payload);
-      const { authorization_url } = result.data;
-
-      paymentWindow.location.href = authorization_url;
-
-      setModalIsOpen(false);
-      setStatusMessage("Redirecting to Moolre...");
-    } catch (err) {
-      console.error("Agent signup error:", err);
-
-      if (paymentWindow) paymentWindow.close();
-
-      setSignupError(
-        err.code === "invalid-argument" ? err.message : `Failed: ${err.message}`
-      );
-      setModalIsOpen(false);
-    } finally {
-      setIsPaymentLoading(false);
-    }
-  };
-
-  // === CHECK DATA STATUS ===
-  const closeCheckDataModal = () => {
-    setCheckDataModalOpen(false);
-    setDataPhoneNumber("");
-  };
-
-  const handleCheckData = async (e) => {
-    e.preventDefault();
-    if (!/^\d{10}$/.test(dataPhoneNumber)) {
-      setStatusMessage("Enter a valid 10-digit number.");
-      closeCheckDataModal();
-      return;
-    }
-
-    const phone = formatPhoneNumber(dataPhoneNumber);
-    try {
-      const q = query(
-        collection(db, "webite_purchase"),
-        where("recipientNumber", "==", phone)
-      );
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        setStatusMessage(`No purchase found for ${dataPhoneNumber}`);
-        closeCheckDataModal();
-        return;
-      }
-
-      const doc = snapshot.docs[0].data();
-
-      let message = "";
-      if (doc.status === "approved") {
-        if (doc.exported === true) {
-          message = "Data has been processed and will be delivered shortly!";
-        } else {
-          message = "Payment successful! Pending processing.";
-        }
-      } else {
-        message = `Status: ${doc.status}`;
-      }
-
-      setStatusMessage(message);
-      closeCheckDataModal();
-    } catch (err) {
-      setStatusMessage("Error checking status.");
-      closeCheckDataModal();
-    }
-  };
-
-  // === AGENT LOGIN ===
-  const closeAgentPortalModal = () => {
-    setAgentPortalModalOpen(false);
-    setAgentEmail("");
-    setAgentPassword("");
-    setIsSignUp(false);
-    setSignupError("");
-    setAgentFullName("");
-    setAgentPhone("");
-    setAgentMomoNumber("");
-    setAgentSignUpEmail("");
-    setSignUpUsername("");
-    setSignUpPassword("");
-  };
-
-  const handleAgentLogin = async (e) => {
-    e.preventDefault();
-    try {
-      await signInWithEmailAndPassword(auth, agentEmail, agentPassword);
-      setStatusMessage("Logged in successfully!");
-      closeAgentPortalModal();
-      navigate("/agent-portal");
-    } catch (err) {
-      setStatusMessage(`Login failed: ${err.message}`);
-    }
-  };
-
-  // === AUTH OBSERVER ===
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, setCurrentUser);
     return () => unsubscribe();
   }, []);
 
-  // === CLEAR STATUS MESSAGE AFTER 6s ===
   useEffect(() => {
     if (statusMessage) {
-      const t = setTimeout(() => setStatusMessage(""), 6000);
-      return () => clearTimeout(t);
+      const timer = setTimeout(() => setStatusMessage(""), 6000);
+      return () => clearTimeout(timer);
     }
   }, [statusMessage]);
 
-  // === RENDER ===
-  const providerLogos = { mtn, airtel, telecel };
+  const openCheckData = () => setModalType("checkData");
+  const openAgentPortal = () => setModalType("agentPortal");
+  const closeModal = () => setModalType(null);
 
   return (
-    <div className="app">
-      {/* Homepage Status Message */}
-      {statusMessage && (
-        <motion.div
-          className="global-status"
-          initial={{ opacity: 0, y: -20 }}
+    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 relative overflow-x-hidden">
+      {/* Ambient Background Glows */}
+      <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-[500px] bg-gradient-to-b from-indigo-50/50 to-transparent pointer-events-none -z-10" />
+      <div className="absolute top-[20%] -right-24 w-96 h-96 bg-indigo-100/30 blur-[100px] rounded-full pointer-events-none -z-10" />
+      <div className="absolute bottom-[10%] -left-24 w-96 h-96 bg-emerald-50/30 blur-[100px] rounded-full pointer-events-none -z-10" />
+
+      {/* Fixed status message */}
+      <div className="fixed top-0 left-0 right-0 z-[100] px-4 pointer-events-none">
+        <div className="max-w-md mx-auto pt-4 pointer-events-auto">
+          <StatusMessage message={statusMessage} />
+        </div>
+      </div>
+
+      <Header currentUser={currentUser} />
+
+      <main className="max-w-4xl mx-auto px-4 pt-12 pb-24 space-y-12">
+        {/* Hero / Quick Actions */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.5 }}
         >
-          {statusMessage}
-        </motion.div>
-      )}
-
-      <header className="header">
-        <motion.div className="title-with-icon">
-          <FaWifi className="wifi-icon" />
-          <h1>Welcome to Ricky's Data</h1>
-        </motion.div>
-        <motion.p className="subtitle">
-          Easy & Affordable Data Bundle Purchase
-          {currentUser && ` | Welcome, ${currentUser.email} (Agent)`}
-        </motion.p>
-      </header>
-
-      <motion.section className="action-buttons-section">
-        <div className="action-buttons-container">
-          <motion.button
-            className="action-button check-data-btn"
-            onClick={() => setCheckDataModalOpen(true)}
-            whileHover={{ scale: 1.05 }}
-          >
-            <FaSearch /> Check Data Status
-          </motion.button>
-          <motion.button
-            className="action-button agent-portal-btn"
-            onClick={() => setAgentPortalModalOpen(true)}
-            whileHover={{ scale: 1.05 }}
-          >
-            <FaUserShield /> Agent Portal
-          </motion.button>
-        </div>
-      </motion.section>
-
-      <motion.section className="provider-logos-section">
-        <h3>Supported Networks</h3>
-        <div className="provider-logos-container">
-          {Object.keys(providerLogos).map((p) => (
-            <motion.img
-              key={p}
-              src={providerLogos[p]}
-              className="provider-logo-img"
-              alt={p}
-              whileHover={{ scale: 1.1 }}
-            />
-          ))}
-        </div>
-      </motion.section>
-
-      <motion.section className="purchase-form-container">
-        <h2>Purchase Data Bundle</h2>
-        <p className="disclaimer-message">
-          Data will be credited within 15mins - 2hours
-        </p>
-        <form onSubmit={handlePurchase} className="purchase-form">
-          <div className="form-group">
-            <label>Data Network:</label>
-            <select
-              value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value)}
-              required
-            >
-              {Object.keys(providersData).map((p) => (
-                <option key={p} value={p}>
-                  {p.toUpperCase()}
-                </option>
-              ))}
-            </select>
+          <div className="text-center mb-8">
+            <h1 className="text-3xl md:text-4xl font-extrabold text-slate-900 tracking-tight mb-3">
+              Data & Airtime{" "}
+              <span className="text-indigo-600">Simplified.</span>
+            </h1>
+            <p className="text-slate-500 max-w-lg mx-auto">
+              Reliable high-speed data delivery across all major networks. Top
+              up your wallet or buy instantly.
+            </p>
           </div>
+          <ActionButtons
+            onCheckData={openCheckData}
+            onAgentPortal={openAgentPortal}
+          />
+        </motion.section>
 
-          <div className="form-group">
-            <label>Bundle:</label>
-            <select
-              value={selectedBundleSize}
-              onChange={(e) => setSelectedBundleSize(e.target.value)}
-              required
-            >
-              {providersData[selectedProvider]?.map((b) => (
-                <option key={b.gb} value={b.gb}>
-                  {b.gb}GB (GHS {b.price})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Recipient Phone Number:</label>
-            <input
-              type="tel"
-              value={recipientPhoneNumber}
-              onChange={(e) => setRecipientPhoneNumber(e.target.value)}
-              pattern="[0-9]{10}"
-              placeholder="0541234567"
-              required
-            />
-          </div>
-
-          <motion.button
-            type="submit"
-            disabled={isPaymentLoading || !getSelectedBundle}
-            className="submit-button"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            {isPaymentLoading ? (
-              <>
-                <FaSpinner className="spin" /> Processing...
-              </>
-            ) : (
-              `Pay GHS ${getSelectedBundle?.price}`
-            )}
-          </motion.button>
-        </form>
-      </motion.section>
-
-      <motion.section className="contact-support">
-        <h3>Need Help?</h3>
-        <p>
-          Contact <a href="tel:0559370174">0559370174</a>
-        </p>
-      </motion.section>
-
-      <motion.section className="whatsapp-group-section">
-        <h3>Join Our Community</h3>
-        <p>
-          Stay updated with the latest offers and support by joining our
-          WhatsApp group!
-        </p>
-        <motion.a
-          href="https://chat.whatsapp.com/JtApd4zwqGU4hrGA6d2iv1?mode=wwt"
-          className="whatsapp-group-button"
-          whileHover={{ scale: 1.05 }}
-          target="_blank"
-          rel="noopener noreferrer"
+        {/* Main Purchase Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-6 md:p-10 relative overflow-hidden"
         >
-          <FaWhatsapp size={24} /> Join WhatsApp Group
-        </motion.a>
-      </motion.section>
+          {/* Subtle Decorative element */}
+          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-bl-[5rem] -z-0" />
 
-      <motion.a
-        href="https://wa.me/233549856098"
-        className="whatsapp-float"
-        whileHover={{ scale: 1.1 }}
-      >
-        <FaWhatsapp size={30} />
-      </motion.a>
-
-      {/* Loading Modal */}
-      <Modal
-        isOpen={modalIsOpen}
-        onRequestClose={closeModal}
-        className="modal"
-        overlayClassName="overlay"
-      >
-        <motion.div className="pin-modal">
-          <FaSpinner className="spin" size={50} />
-          <h2>Redirecting to Payment...</h2>
-          <p>Please wait while we open the secure payment page.</p>
-          <p>
-            <strong>
-              {isAgentSignup
-                ? "Agent Registration (GHS 50)"
-                : `${
-                    getSelectedBundle?.gb
-                  }GB ${selectedProvider.toUpperCase()}`}
-            </strong>
-          </p>
-          <motion.button
-            onClick={closeModal}
-            className="close-modal-button secondary"
-            whileHover={{ scale: 1.05 }}
-          >
-            Cancel
-          </motion.button>
-        </motion.div>
-      </Modal>
-
-      {/* Check Data Modal */}
-      <Modal
-        isOpen={checkDataModalOpen}
-        onRequestClose={closeCheckDataModal}
-        className="modal"
-        overlayClassName="overlay"
-      >
-        <div className="modal-content">
-          <h2>
-            <FaSearch /> Check Data Status
-          </h2>
-          <form onSubmit={handleCheckData}>
-            <div className="form-group">
-              <label>Phone Number:</label>
-              <input
-                type="tel"
-                value={dataPhoneNumber}
-                onChange={(e) => setDataPhoneNumber(e.target.value)}
-                pattern="[0-9]{10}"
-                placeholder="Enter Receipient Number"
-                required
-              />
+          <div className="relative z-10">
+            <ProviderLogos />
+            <div className="mt-10">
+              <PurchaseForm setStatusMessage={setStatusMessage} />
             </div>
-            <motion.button type="submit" className="submit-button">
-              Check
-            </motion.button>
-          </form>
-          <motion.button
-            onClick={closeCheckDataModal}
-            className="close-modal-button secondary"
-          >
-            Cancel
-          </motion.button>
-        </div>
-      </Modal>
+          </div>
+        </motion.div>
 
-      {/* Agent Portal Modal */}
-      <Modal
-        isOpen={agentPortalModalOpen}
-        onRequestClose={closeAgentPortalModal}
-        className="modal"
-        overlayClassName="overlay"
-      >
-        <div className="modal-content">
-          <h2>
-            <FaUserShield /> Agent Portal
-          </h2>
-          <div className="toggle-buttons">
-            <button
-              type="button"
-              className={`toggle-btn ${!isSignUp ? "active" : ""}`}
-              onClick={() => setIsSignUp(false)}
-            >
-              Login
-            </button>
-            <button
-              type="button"
-              className={`toggle-btn ${isSignUp ? "active" : ""}`}
-              onClick={() => setIsSignUp(true)}
-            >
-              Sign Up
-            </button>
+        {/* Support & Community Section */}
+        <section className="space-y-6">
+          <div className="flex items-center gap-4 px-2">
+            <h2 className="text-xl font-bold text-slate-800">Support Hub</h2>
+            <div className="h-px flex-1 bg-slate-200" />
           </div>
 
-          {isSignUp ? (
-            <form onSubmit={handleAgentSignUpPayment} className="simple-form">
-              <p>
-                <strong>Step 1:</strong> Pay GHS 50 → <strong>Step 2:</strong>{" "}
-                Account auto-created!
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Call Support */}
+            <motion.div
+              whileHover={{ y: -5 }}
+              className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm flex flex-col items-center text-center group transition-all hover:shadow-md"
+            >
+              <div className="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center mb-5 group-hover:bg-emerald-600 group-hover:text-white transition-colors duration-300">
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                  />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">
+                Live Assistance
+              </h3>
+              <p className="text-slate-500 text-sm mb-6 leading-relaxed">
+                Need help with a transaction? Our support team is just a call
+                away.
               </p>
-              {signupError && <p className="error-message">{signupError}</p>}
-
-              <div className="form-group">
-                <label>Full Name:</label>
-                <input
-                  type="text"
-                  value={agentFullName}
-                  onChange={(e) => setAgentFullName(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Contact Phone Number:</label>
-                <input
-                  type="tel"
-                  value={agentPhone}
-                  onChange={(e) => setAgentPhone(e.target.value)}
-                  pattern="[0-9]{10}"
-                  placeholder="0541234567"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>MoMo Number:</label>
-                <input
-                  type="tel"
-                  value={agentMomoNumber}
-                  onChange={(e) => setAgentMomoNumber(e.target.value)}
-                  pattern="[0-9]{10}"
-                  placeholder="0541234567"
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Email:</label>
-                <input
-                  type="email"
-                  value={agentSignUpEmail}
-                  onChange={(e) => setAgentSignUpEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Username:</label>
-                <input
-                  type="text"
-                  value={signUpUsername}
-                  onChange={(e) => setSignUpUsername(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label>Password:</label>
-                <input
-                  type="password"
-                  value={signUpPassword}
-                  onChange={(e) => setSignUpPassword(e.target.value)}
-                  required
-                />
-              </div>
-
-              <motion.button
-                type="submit"
-                disabled={isPaymentLoading}
-                className="submit-button"
-                whileHover={{ scale: 1.05 }}
+              <a
+                href="tel:0559370174"
+                className="w-full py-3 px-6 bg-slate-900 text-white rounded-xl font-bold hover:bg-indigo-600 transition-all shadow-lg shadow-slate-200 flex items-center justify-center gap-2"
               >
-                {isPaymentLoading ? (
-                  <>
-                    <FaSpinner className="spin" /> Processing...
-                  </>
-                ) : (
-                  "Pay GHS 50 & Register"
-                )}
-              </motion.button>
-            </form>
-          ) : (
-            <form onSubmit={handleAgentLogin} className="simple-form">
-              <div className="form-group">
-                <label>Email:</label>
-                <input
-                  type="email"
-                  value={agentEmail}
-                  onChange={(e) => setAgentEmail(e.target.value)}
-                  required
-                />
+                <span>Call 055 937 0174</span>
+              </a>
+            </motion.div>
+
+            {/* WhatsApp Community */}
+            <motion.div
+              whileHover={{ y: -5 }}
+              className="bg-indigo-600 p-8 rounded-3xl shadow-xl shadow-indigo-100 flex flex-col items-center text-center group text-white transition-all"
+            >
+              <div className="w-14 h-14 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-5">
+                <svg
+                  className="w-6 h-6 text-white"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L0 24l6.335-1.662c1.72.937 3.659 1.435 5.63 1.436h.008c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+                </svg>
               </div>
-              <div className="form-group">
-                <label>Password:</label>
-                <input
-                  type="password"
-                  value={agentPassword}
-                  onChange={(e) => setAgentPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <motion.button type="submit" className="submit-button">
-                Login
-              </motion.button>
-            </form>
-          )}
-          <motion.button
-            onClick={closeAgentPortalModal}
-            className="close-modal-button secondary"
-          >
-            Cancel
-          </motion.button>
-        </div>
-      </Modal>
+              <h3 className="text-lg font-bold mb-2">Network Updates</h3>
+              <p className="text-indigo-100 text-sm mb-6 leading-relaxed">
+                Join 500+ agents in our community for instant maintenance
+                alerts.
+              </p>
+              <a
+                href="https://chat.whatsapp.com/JtApd4zwqGU4hrGA6d2iv1"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3 px-6 bg-white text-indigo-600 rounded-xl font-bold hover:bg-indigo-50 transition-all flex items-center justify-center gap-2"
+              >
+                <span>Join Community</span>
+              </a>
+            </motion.div>
+          </div>
+        </section>
+      </main>
+
+      <WhatsAppFloat />
+
+      {/* Modals */}
+      <CheckDataModal
+        isOpen={modalType === "checkData"}
+        onClose={closeModal}
+        setStatusMessage={setStatusMessage}
+      />
+
+      <AgentPortalModal
+        isOpen={modalType === "agentPortal"}
+        onClose={closeModal}
+        setStatusMessage={setStatusMessage}
+        navigate={navigate}
+      />
     </div>
   );
 }
