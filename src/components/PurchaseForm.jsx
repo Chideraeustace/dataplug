@@ -6,7 +6,7 @@ import { httpsCallable } from "firebase/functions";
 import { functions } from "../Firebase";
 
 const providersData = {
-  mtn: { color: "bg-[#FFCC00]", border: "border-[#FFCC00]", text: "text-black", bundles: [{ gb: 1, price: 6.0 }, { gb: 2, price: 12.0 }, { gb: 3, price: 16.0 }, { gb: 4, price: 21.0 }, { gb: 5, price: 26.0 }, { gb: 6, price: 30.0 }, { gb: 8, price: 42.0 }, { gb: 10, price: 47.0 }, { gb: 12, price: 53.0 }, { gb: 15, price: 67.0 }, { gb: 20, price: 87.0 }, { gb: 25, price: 105.0 }, { gb: 30, price: 128.0 }, { gb: 40, price: 168.0 }, { gb: 50, price: 199.0 }] },
+  mtn: { color: "bg-[#FFCC00]", border: "border-[#FFCC00]", text: "text-black", bundles: [{ gb: 1, price: 5.3 }, { gb: 2, price: 11.0 }, { gb: 3, price: 16.0 }, { gb: 4, price: 20.0 }, { gb: 5, price: 25.0 }, { gb: 6, price: 30.0 }, { gb: 8, price: 40.0 }, { gb: 10, price: 46.0 }, { gb: 12, price: 54.0 }, { gb: 15, price: 66.0 }, { gb: 20, price: 86.0 }, { gb: 25, price: 105.0 }, { gb: 30, price: 125.0 }, { gb: 40, price: 165.0 }, { gb: 50, price: 199.0 }] },
   airtel: { color: "bg-[#ED1C24]", border: "border-[#ED1C24]", text: "text-white", bundles: [{ gb: 1, price: 5.0 }, { gb: 2, price: 10.0 }, { gb: 3, price: 15.0 }, { gb: 4, price: 20.0 }, { gb: 5, price: 25.0 }, { gb: 6, price: 30.0 }, { gb: 7, price: 35.0 }, { gb: 8, price: 40.0 }, { gb: 10, price: 45.0 }, { gb: 12, price: 52.0 }, { gb: 15, price: 65.0 }, { gb: 20, price: 83.0 }, { gb: 25, price: 106.0 }] },
   telecel: { color: "bg-[#E60000]", border: "border-[#E60000]", text: "text-white", bundles: [{ gb: 5, price: 25.0 }, { gb: 10, price: 50.0 }, { gb: 15, price: 58.0 }, { gb: 20, price: 85.0 }, { gb: 25, price: 100.0 }, { gb: 30, price: 130.0 }] },
 };
