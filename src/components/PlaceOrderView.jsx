@@ -46,7 +46,7 @@ const PlaceOrderView = () => {
       ];
 
       for (const { subcoll, key } of periods) {
-        const subcollRef = collection(db, "bundles", network, subcoll);
+        const subcollRef = collection(db, "dp-bundles", network, subcoll);
         const q = query(subcollRef, where("active", "==", true), orderBy("price", "asc"));
         const snap = await getDocs(q);
         
