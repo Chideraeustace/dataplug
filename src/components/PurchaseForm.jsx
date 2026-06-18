@@ -25,7 +25,7 @@ const mtnSpecialOffers = [
 const PurchaseForm = ({ setStatusMessage }) => {
   // --- CONTROL FLAG FOR STOCK ---
   // Change this to false (or tie it to real remote config/props) to disable the special offers
-  const isSpecialOfferAvailable = true; // Change to false when out of stock
+  const isSpecialOfferAvailable = false; // Change to false when out of stock
 
   const [purchaseType, setPurchaseType] = useState("regular"); // "regular" or "special"
   const [selectedProvider, setSelectedProvider] = useState("mtn");
