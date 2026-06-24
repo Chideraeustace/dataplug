@@ -114,7 +114,7 @@ const PurchaseForm = ({ setStatusMessage }) => {
           </div>
           <p className="text-slate-400 text-sm flex items-center gap-2">
             <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            Delivered within 15 mins – 1hr
+            Dear Customer, kindly hold on with purchasing of data bundles as we are currently experiencing a temporary outage. We apologize for the inconvenience and appreciate your patience. Our team is actively working to resolve the issue, and we will notify you once the service is restored. Thank you for your understanding.
           </p>
         </div>
 
